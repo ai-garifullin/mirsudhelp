@@ -4,5 +4,4 @@ mysql_data
 *.pyc
 .idea
 .env
-docker-compose.yml
 init.sql

@@ -1,0 +1,76 @@
+
+services:
+  # 1. База Данных
+  db:
+    image: mysql:8.0
+    container_name: mysqldb
+    restart: always
+    env_file:
+      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: service_desk_db
+    networks:
+      - mynet
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "3307:3306"
+
+  # 2. Дэшборд Диспетчера (Порт 8501)
+  app:
+    build: .
+    container_name: service_desk_app
+    restart: always
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=mysqldb
+    networks:
+      - mynet
+    volumes:
+      - ./:/app
+    depends_on:
+      - db
+    # Запускаем именно dashboard.py
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+
+  # 3. Форма для Пользователей (Порт 8502) <-- НОВЫЙ БЛОК
+  form:
+    build: .
+    container_name: service_desk_form
+    restart: always
+    ports:
+      - "8502:8502"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=mysqldb
+    networks:
+      - mynet
+    depends_on:
+      - db
+    # Запускаем form_app.py на другом порту
+    command: streamlit run form_app.py --server.port=8502 --server.address=0.0.0.0
+
+  # 4. Боты (Telegram + Email)
+  bot:
+    build: .
+    container_name: service_desk_bot
+    restart: always
+    command: sh -c "python service_desk_bot.py & python email_monitor.py"
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=mysqldb
+    networks:
+      - mynet
+    depends_on:
+      - db
+networks:
+  mynet:
+volumes:
+  db_data:
