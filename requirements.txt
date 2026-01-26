@@ -1,0 +1,6 @@
+streamlit
+pandas
+mysql-connector-python
+streamlit-cookies-manager
+telebot
+dotenv

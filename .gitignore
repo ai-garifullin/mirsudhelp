@@ -1,0 +1,8 @@
+__pycache__
+.venv
+mysql_data
+*.pyc
+.idea
+.env
+docker-compose.yml
+init.sql
