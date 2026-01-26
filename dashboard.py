@@ -1,7 +1,7 @@
 import streamlit as st
 import hashlib
 import json
-from streamlit_cookies_manager import EncryptedCookieManager # <--- 1. ДОБАВИТЬ
+from streamlit_cookies_manager import EncryptedCookieManager
 
 from db_utils import * 
 from main_view import render_main_view
@@ -28,29 +28,48 @@ if not cookies.ready():
 
 # --- 3. ОБНОВЛЕННАЯ ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
 def check_login():
-    """Проверяет логин через cookies, а затем через session_state."""
+    """Проверяет логин и АКТУАЛЬНОСТЬ пользователя в базе."""
     
-    # 1. СНАЧАЛА ПРОВЕРЯЕМ COOKIE
+    # 1. Сначала пытаемся восстановить данные из Cookie
     auth_token_json = cookies.get("auth_token")
-    if auth_token_json:
+    if auth_token_json and not st.session_state.get("logged_in"):
         try:
-            # Превращаем строку из cookie обратно в словарь
             user_data = json.loads(auth_token_json)
-            # "Запоминаем" пользователя в сессии
             st.session_state["logged_in"] = True
             st.session_state["user_login"] = user_data['login']
-            st.session_state["user_role"] = user_data['role']
-            return True
+            # Роль пока не пишем, возьмем свежую из базы
         except:
-            # Если cookie "битый" или не парсится, удаляем его
             del cookies['auth_token']
             cookies.save()
 
-    # 2. ЕСЛИ COOKIE НЕТ, ПРОВЕРЯЕМ СЕССИЮ (для первого входа)
+    # 2. Если пользователь считается "вошедшим" (из cookie или сессии)
     if st.session_state.get("logged_in"):
-        return True
-
-    # 3. ЕСЛИ НИЧЕГО НЕ ПОМОГЛО - ПОКАЗЫВАЕМ ФОРМУ ВХОДА
+        login = st.session_state.get("user_login")
+        
+        # --- ВАЖНАЯ ПРОВЕРКА: СУЩЕСТВУЕТ ЛИ ОН ЕЩЕ? ---
+        conn = get_db_connection()
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT role FROM system_users WHERE login = %s", (login,))
+            user_in_db = cursor.fetchone()
+            conn.close()
+            
+            if user_in_db:
+                # Все ок, обновляем роль (вдруг её поменяли)
+                st.session_state["user_role"] = user_in_db['role']
+                return True
+            else:
+                # ПОЛЬЗОВАТЕЛЬ УДАЛЕН ИЗ БАЗЫ!
+                # Сбрасываем всё и выкидываем его
+                st.session_state["logged_in"] = False
+                st.session_state["user_login"] = None
+                if 'auth_token' in cookies:
+                    del cookies['auth_token']
+                    cookies.save()
+                st.error("Ваша учетная запись была удалена или заблокирована.")
+                # st.rerun() не делаем, чтобы показать ошибку
+    
+    # 3. Если проверки не пройдены - показываем форму входа
     with st.form("login_form"):
         st.header("Вход в Service Desk")
         login = st.text_input("Логин")
@@ -76,37 +95,54 @@ def check_login():
                 st.session_state["user_login"] = user_data['login']
                 st.session_state["user_role"] = user_data['role']
                 
-                # --- ГЛАВНОЕ ИЗМЕНЕНИЕ: СОХРАНЯЕМ ДАННЫЕ В COOKIE ---
                 cookie_value = json.dumps({
                     'login': user_data['login'],
-                    'role': user_data['role']
+                    # Роль в куки можно не писать, мы её все равно проверяем по базе
                 })
-                # Устанавливаем cookie на 30 дней
-                cookies['auth_token'] = cookie_value # <--- ПРАВИЛЬНО
-                cookies.save() # Сохраняем изменения
+                cookies['auth_token'] = cookie_value
+                cookies.save()
+                
                 log_action(user_data['login'], 'LOGIN', 'Успешный вход')
                 st.rerun()
             else:
                 st.error("Неверный пароль")
     return False
 
-# --- 4. ГЛАВНЫЙ КОД ПРИЛОЖЕНИЯ ---
 
 if check_login():
     
     # --- НОВАЯ КНОПКА ВЫХОДА ---
     with st.sidebar:
-        st.success(f"Вы вошли как: **{st.session_state['user_login']}**")
-        st.info(f"Ваша роль: **{st.session_state['user_role']}**")
+        st.success(f"Вы вошли как: **{st.session_state.get('user_login')}**")
+        st.info(f"Ваша роль: **{st.session_state.get('user_role')}**")
+        
+        # --- JS-КНОПКА ВЫХОДА ---
+        # Мы создаем невидимый контейнер с HTML/JS кодом
         
         if st.button("Выйти из системы"):
-            # Удаляем "запоминание" из сессии
-            st.session_state["logged_in"] = False
-            # Удаляем cookie
-            if 'auth_token' in cookies:
-                del cookies['auth_token']
-                cookies.save()
-            st.rerun() # Перезагружаем, чтобы показать форму входа
+            # 1. Удаляем сессию на сервере
+            st.session_state.clear()
+            
+            # 2. Выполняем JS для удаления куки в браузере
+            # document.cookie = ... устанавливает срок жизни куки в прошлом, чтобы браузер их удалил
+            js_code = """
+                <script>
+                    function deleteAllCookies() {
+                        var cookies = document.cookie.split(";");
+                        for (var i = 0; i < cookies.length; i++) {
+                            var cookie = cookies[i];
+                            var eqPos = cookie.indexOf("=");
+                            var name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+                            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                        }
+                    }
+                    deleteAllCookies();
+                    window.location.reload();
+                </script>
+            """
+            # Вставляем JS и он выполняется мгновенно
+            st.components.v1.html(js_code)
+            st.stop()
     
     # --- "РОУТЕР" (остается без изменений) ---
     if 'selected_request_id' not in st.session_state:

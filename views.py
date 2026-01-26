@@ -224,7 +224,6 @@ def render_detail_view(request_id):
 
                 st.toast("✅ Заявка обновлена!")
                 time.sleep(1)
-                print('усппппех')
                 st.rerun()
 
 
