@@ -9,9 +9,9 @@ import time
 
 
 DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_USER = os.getenv('DB_USER', 'root')         # Добавьте DB_USER=root в ваш .env
-DB_PASSWORD = os.getenv('DB_PASSWORD', 'vesna2321') # Добавьте DB_PASSWORD=... в .env
-DB_NAME = os.getenv('DB_NAME', 'service_desk_db')   # Добавьте DB_NAME=... в .env
+DB_USER = os.getenv('DB_USER', 'root')         
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'vesna2321') 
+DB_NAME = os.getenv('DB_NAME', 'service_desk_db')   
 # ------- ФУНКЦИИ РАБОТЫ С ДАННЫМИ ---
 
 def get_db_connection():
@@ -20,16 +20,16 @@ def get_db_connection():
     attempts = 5
     for i in range(attempts):
         try:
-            # Пытаемся подключиться
-            print(f"🔌 ПОПЫТКА ПОДКЛЮЧЕНИЯ: Host={DB_HOST}, User={DB_USER}, DB={DB_NAME}")
-                # --- ТЕСТ: КУДА МЫ ПОПАЛИ? ---
-            temp_conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD)
-            temp_cursor = temp_conn.cursor()
-            temp_cursor.execute("SELECT @@hostname;")
-            print(f"🌍 Я ПОПАЛ НА ХОСТ: {temp_cursor.fetchone()[0]}")
-            temp_cursor.execute("SHOW DATABASES;")
-            print(f"📂 БАЗЫ ДАННЫХ ЗДЕСЬ: {[x[0] for x in temp_cursor.fetchall()]}")
-            temp_conn.close()
+            # ПОтладка
+            # print(f"🔌 ПОПЫТКА ПОДКЛЮЧЕНИЯ: Host={DB_HOST}, User={DB_USER}, DB={DB_NAME}")
+            #     # --- ТЕСТ: КУДА МЫ ПОПАЛИ? ---
+            # temp_conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASSWORD)
+            # temp_cursor = temp_conn.cursor()
+            # temp_cursor.execute("SELECT @@hostname;")
+            # print(f"🌍 Я ПОПАЛ НА ХОСТ: {temp_cursor.fetchone()[0]}")
+            # temp_cursor.execute("SHOW DATABASES;")
+            # print(f"📂 БАЗЫ ДАННЫХ ЗДЕСЬ: {[x[0] for x in temp_cursor.fetchall()]}")
+            # temp_conn.close()
             # -----------------------------
             conn = mysql.connector.connect(
                 host=DB_HOST,
