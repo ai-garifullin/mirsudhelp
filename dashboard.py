@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- 2. НАСТРОЙКИ ---
-st.set_page_config(page_title="Диспетчер Service Desk", layout="wide")
+st.set_page_config(page_title="Service Desk Mirsud", layout="wide")
 
 # Инициализация менеджера Cookies
 # Пароль может быть любой секретной строкой, он нужен для шифрования

@@ -16,12 +16,12 @@ services:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "3307:3306"
+      - "127.0.0.1:3307:3306"
 
   # 2. Дэшборд Диспетчера (Порт 8501)
   app:
     build: .
-    container_name: service_desk_app
+    container_name: service_desk_appd
     restart: always
     ports:
       - "8501:8501"
