@@ -7,6 +7,9 @@ WORKDIR /app
 # 3. Копируем файл с зависимостями
 COPY requirements.txt .
 
+RUN apt-get update && apt-get install -y tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
 # 4. Устанавливаем библиотеки
 RUN pip install --no-cache-dir -r requirements.txt
 
