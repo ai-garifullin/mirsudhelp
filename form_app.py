@@ -86,14 +86,14 @@ with st.form("new_request_form", clear_on_submit=True): # clear_on_submit очи
     st.subheader("2. Местоположение")
     col1, col2 = st.columns(2)
     with col1:
-        selected_district_name = st.selectbox("Район:", options=district_names, key="f_dist")
+        selected_district_name = st.selectbox("Район:", options=district_names, placeholder='Выбрать из списка', key="f_dist")
     with col2:
         section_number = st.number_input("Номер участка:", min_value=1, step=1, key="f_sec")
         
     st.divider()
 
     st.subheader("3. Суть проблемы")
-    selected_type_name = st.selectbox("Тип заявки:", options=type_names, key="f_type")
+    selected_type_name = st.selectbox("Тип заявки:", options=type_names, placeholder='Выбрать из списка', key="f_type")
     description = st.text_area("Подробное описание проблемы:", height=150, key="f_desc")
     
     submit_button = st.form_submit_button("🚀 Отправить заявку", type="primary")
