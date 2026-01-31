@@ -191,7 +191,7 @@ def update_fuel_record(request_id, col_name, value):
     if value is None: value = 0.0
     cursor.execute("SELECT Record_ID FROM departure_record WHERE Request_ID = %s", (int(request_id),))
     if cursor.fetchone():
-        sql = f"UPDATE Departure_Record SET {col_name} = %s WHERE Request_ID = %s"
+        sql = f"UPDATE departure_record SET {col_name} = %s WHERE Request_ID = %s"
         cursor.execute(sql, (value, int(request_id)))
     else:
         defaults = {'Mileage': 0, 'Fuel_Price': 0, 'Fuel_Consumption': 0}
