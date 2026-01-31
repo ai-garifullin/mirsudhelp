@@ -2,7 +2,7 @@ import streamlit as st
 import time
 from datetime import datetime
 from db_utils import * 
-
+import io
 
 def render_main_view():
     st.title("Service Desk Mirsud")
@@ -54,6 +54,20 @@ def render_main_view():
     active_filters = {'address': f_addr, 'executor': f_exec, 'service_type': f_service, 'status': show_completed_only}
     
     data = fetch_main_data(active_filters)
+    def to_excel(df):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Sheet1')
+        return output.getvalue()
+
+    excel_data = to_excel(data)
+
+    st.download_button(
+        label="📥 Скачать отчет в Excel",
+        data=excel_data,
+        file_name='report.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
     
     # Определяем, заблокирована ли таблица
     is_table_disabled = show_completed_only

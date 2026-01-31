@@ -4,3 +4,4 @@ mysql-connector-python
 streamlit-cookies-manager
 telebot
 dotenv
+xlsxwriter
