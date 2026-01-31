@@ -5,6 +5,8 @@ from db_utils import * # Убедитесь, что все нужные функ
 from email_monitor import send_email
 import time
 
+conn = get_db_connection()
+
 def render_detail_view(request_id):
     """Рисует страницу-карточку с чатом слева и данными справа."""
     
@@ -38,72 +40,162 @@ def render_detail_view(request_id):
     with left_col:
         st.subheader("✉️ Переписка с заявителем")
         
-        # Стили для чата
+        # --- CSS СТИЛИ ДЛЯ ЧАТА ---
         st.markdown("""
             <style>
-                .chat-message { padding: 10px; border-radius: 8px; margin-bottom: 10px; max-width: 95%; word-wrap: break-word; color: #000000; }
-                .user-message { background-color: #f1f0f0; align-self: flex-start; }
-                .support-message { background-color: #e7f3ff; align-self: flex-end; }
-                .message-header { font-size: 0.8em; color: #555; margin-bottom: 5px; color: #555555; }
+                .chat-container {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 30px;
+                    padding: 10px;
+                }
+                .message-box {
+                    padding: 15px;
+                    border-radius: 12px;
+                    max-width: 90%;
+                    word-wrap: break-word;
+                    font-size: 15px;
+                    line-height: 1.5;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    margin-bottom: 20px; /* Отступ СНИЗУ от каждого сообщения */
+                }
+                /* Стиль для заявителя (Слева, серый) */
+                .client-msg {
+                    background-color: #f2f3f5;
+                    color: #1f1f1f;
+                    align-self: flex-start;
+                    border-bottom-left-radius: 2px;
+                    border: 1px solid #e0e0e0;
+                }
+                /* Стиль для техподдержки (Справа, зеленый/синий) */
+                .support-msg {
+                    background-color: #e3f2fd; /* Светло-синий */
+                    color: #0d47a1;
+                    align-self: flex-end;
+                    border-bottom-right-radius: 2px;
+                    border: 1px solid #bbdefb;
+                }
+                /* Стиль для самой первой заявки (Выделяем особо) */
+                .initial-msg {
+                    background-color: #fff3cd; /* Желтоватый фон */
+                    color: #856404;
+                    align-self: center;
+                    width: 100%;
+                    border: 1px solid #ffeeba;
+                }
+                .meta-info {
+                    font-size: 12px;
+                    color: #6c757d;
+                    margin-bottom: 5px;
+                    font-weight: bold;
+                    display: flex;
+                    justify-content: space-between;
+                }
             </style>
         """, unsafe_allow_html=True)
-        
-        # Контейнер для чата с прокруткой
-        with st.container(height=500):
-            messages = re.split(r'--- \[(ОТВЕТ .*?)\] ---', data.get('Description', ''))
-            initial_description = messages.pop(0).strip()
-            message_pairs = [messages[i:i+2] for i in range(0, len(messages), 2)]
-            
-            # Оригинальное сообщение
-            # 1. Подготавливаем текст ЗАРАНЕЕ
-            safe_description = initial_description.replace('\n', '<br>')
 
-            # 2. Вставляем уже готовую переменную
+        # --- КОНТЕЙНЕР СООБЩЕНИЙ ---
+        with st.container(height=600, border=True):
+            st.markdown("<div class='chat-container'>", unsafe_allow_html=True)
+            
+            # 1. ОТРИСОВКА ИСХОДНОЙ ЗАЯВКИ (Из таблицы Request)
+            initial_desc = data.get('Description', '').replace('\n', '<br>')
+            initial_date = data.get('Date_Received') # Убедитесь, что это поле datetime
+            date_str = initial_date.strftime('%d.%m.%Y %H:%M') if initial_date else "Неизвестно"
+            
             st.markdown(f"""
-                <div class="chat-message user-message">
-                    <div class="message-header">ОРИГИНАЛЬНАЯ ЗАЯВКА</div>
-                    {safe_description}
+                <div class='message-box initial-msg'>
+                    <div class='meta-info'>
+                        <span>🚀 ИСХОДНАЯ ЗАЯВКА</span>
+                        <span>{date_str}</span>
+                    </div>
+                    {initial_desc}
                 </div>
             """, unsafe_allow_html=True)
+
+            # 2. ПОЛУЧЕНИЕ ПЕРЕПИСКИ (Из таблицы request_message)
+            # conn должен быть определен выше в вашем коде
+            cursor = conn.cursor()
+            sql_chat = """
+                SELECT Sender_Type, Message_Text, Created_At 
+                FROM request_message 
+                WHERE Request_ID = %s 
+                ORDER BY Created_At ASC
+            """
+            cursor.execute(sql_chat, (request_id,))
+            messages = cursor.fetchall()
             
-            # Ответы
-            for header, text in reversed(message_pairs):
-                text_html = text.strip().replace('\n', '<br>')
+            # 3. ЦИКЛ ОТРИСОВКИ СООБЩЕНИЙ
+            for sender, text, created_at in messages:
+                # Определяем стиль и заголовок
+                if sender == 'Client':
+                    css_class = "client-msg"
+                    sender_name = "👤 ЗАЯВИТЕЛЬ"
+                else:
+                    css_class = "support-msg"
+                    sender_name = "🛠 ТЕХПОДДЕРЖКА"
                 
-                css_class = "support-message" if "ТЕХПОДДЕРЖКИ" in header else "user-message"
-                st.markdown(f'<div style="display: flex; flex-direction: column;"><div class="chat-message {css_class}"><div class="message-header">{header}</div>{text_html}</div></div>', unsafe_allow_html=True)
-        
+                time_formatted = created_at.strftime('%d.%m.%Y %H:%M')
+                text_formatted = text.replace('\n', '<br>')
+                
+                st.markdown(f"""
+                    <div class='message-box {css_class}'>
+                        <div class='meta-info'>
+                            <span>{sender_name}</span>
+                            <span>{time_formatted}</span>
+                        </div>
+                        {text_formatted}
+                    </div>
+                """, unsafe_allow_html=True)
+                
+            st.markdown("</div>", unsafe_allow_html=True)
+
         st.divider()
+
+        # --- ФОРМА ОТПРАВКИ ОТВЕТА ---
+        recipient_email = data.get('Email') # Email берем из данных участка
         
-        # Форма отправки
-        recipient_email = data.get('Email')
-        if not recipient_email:
-            st.warning("Email участка не указан.")
-        else:
-            with st.form("email_form", clear_on_submit=True):
-                st.info(f"Сообщение будет отправлено на: **{recipient_email}**")
-                email_body = st.text_area("Текст нового сообщения:", height=100)
-                send_button = st.form_submit_button("📨 Отправить email", disabled = is_disabled)
-
-            if send_button and email_body:
-                subject = f"Service Desk: Ответ по заявке №{request_id}"
-                status_message = send_email(recipient_email, subject, email_body) # send_email должна быть в db_utils
-                if "✅" in status_message:
-                    st.success(status_message)
-                    # 1. Получаем старое описание
-                    old_description = data['Description']
-
-                    # 2. Формируем заголовок для нового сообщения
-                    ts = datetime.now().strftime('%d.%m.%Y %H:%M')
-                    header = f"--- [ОТВЕТ ТЕХПОДДЕРЖКИ {ts}] ---"
-
-                    # 3. "Склеиваем" все части с помощью переносов строк \n
-                    new_description = "\n\n".join([old_description, header, email_body])
-
-                    update_db_field(request_id, "Description", new_description)
+        # Проверка, не закрыта ли заявка (опционально, можно убрать disabled)
+        is_closed = "Закрыт" in str(data.get('Status', ''))
+    
+        with st.form("reply_form", clear_on_submit=True):
+            st.write("📤 **Написать ответ заявителю**")
+            reply_text = st.text_area("Текст сообщения:", height=120, disabled=is_closed)
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                send_btn = st.form_submit_button("📨 Отправить", disabled=is_closed)
+            with col2:
+                if is_closed:
+                    st.caption("⛔ Заявка закрыта, отвечать нельзя.")
+        
+        # --- ОБРАБОТКА ОТПРАВКИ ---
+        if send_btn and reply_text:
+            if not recipient_email:
+                st.error("❌ У этого участка не указан Email в базе данных!")
+            else:
+                # 1. Отправляем реальное письмо
+                subject = f"Re: Заявка №{request_id}" # Тема важна для монитора!
+                
+                # Вызов функции из db_utils
+                status_msg = send_email(recipient_email, subject, reply_text)
+                
+                if "✅" in status_msg:
+                    st.toast("Письмо успешно отправлено!", icon="✅")
+                    
+                    # 2. Сохраняем в историю (request_message)
+                    sql_insert = """
+                        INSERT INTO request_message (Request_ID, Sender_Type, Message_Text, Created_At)
+                        VALUES (%s, 'Support', %s, NOW())
+                    """
+                    cursor.execute(sql_insert, (request_id, reply_text))
+                    conn.commit()
+                    
+                    # 3. Перезагружаем страницу, чтобы увидеть свое сообщение
+                    time.sleep(1) # Небольшая пауза для базы
                     st.rerun()
                 else:
-                    st.error(status_message)
+                    st.error(f"Ошибка при отправке: {status_msg}")
 
     # =================================================
     # ПРАВАЯ КОЛОНКА: ИНФОРМАЦИЯ И РЕДАКТИРОВАНИЕ

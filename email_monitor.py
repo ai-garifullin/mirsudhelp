@@ -107,7 +107,7 @@ def extract_email_address(raw_from):
 # --- 3. ЛОГИКА ОБРАБОТКИ ---
 
 def process_emails():
-    logger.info("🔄 Проверка почты...")
+    #logger.info("🔄 Проверка почты...")
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
         mail.login(EMAIL_USER, EMAIL_PASS)
@@ -120,7 +120,7 @@ def process_emails():
     email_ids = messages[0].split()
 
     if not email_ids:
-        logger.info("📭 Новых писем нет.")
+        #logger.info("📭 Новых писем нет.")
         mail.logout()
         return
 
@@ -141,7 +141,7 @@ def process_emails():
             sender_email = extract_email_address(raw_from)
             body = get_email_body(msg).strip()
 
-            logger.info(f"📨 От: {sender_email} | Тема: {raw_subject}")
+           # logger.info(f"📨 От: {sender_email} | Тема: {raw_subject}")
 
             # 1. ПРОВЕРКА ОТПРАВИТЕЛЯ
             cursor.execute("SELECT Section_ID FROM court_section WHERE Email = %s", (sender_email,))
@@ -178,7 +178,7 @@ def process_emails():
                 cursor.execute("SELECT Request_ID FROM Request WHERE Request_ID = %s", (potential_id,))
                 if cursor.fetchone():
                     target_request_id = potential_id
-                    logger.info(f"   -> 📎 Найден ID {target_request_id} (из темы письма).")
+                    #logger.info(f"   -> 📎 Найден ID {target_request_id} (из темы письма).")
                 else:
                     logger.warning(f"   -> ⚠️ В теме есть ID {potential_id}, но в базе его нет.")
 
@@ -204,7 +204,7 @@ def process_emails():
                     # Если очищенные темы совпадают
                     if stored_subj and stored_subj == clean_subj:
                         target_request_id = req_id
-                        logger.info(f"   -> 📎 Найдена ветка по теме: '{clean_subj}' -> ID {target_request_id}")
+                        #logger.info(f"   -> 📎 Найдена ветка по теме: '{clean_subj}' -> ID {target_request_id}")
                         break
 
             # --- ВЫПОЛНЕНИЕ ДЕЙСТВИЯ ---
@@ -220,38 +220,58 @@ def process_emails():
     mail.logout()
 
 def update_existing_ticket(cursor, conn, request_id, body):
-    """Обновляет чат."""
-    cursor.execute("SELECT Description FROM Request WHERE Request_ID = %s", (request_id,))
-    res = cursor.fetchone()
-    if res:
-        old_desc = res[0]
-        timestamp = datetime.now().strftime('%d.%m %H:%M')
-        new_entry = f"\n\n--- [ОТВЕТ ЗАЯВИТЕЛЯ {timestamp}] ---\n{body}"
-        
-        cursor.execute("UPDATE Request SET Description = %s WHERE Request_ID = %s", (old_desc + new_entry, request_id))
-        conn.commit()
-        logger.info(f"   -> ✅ Сообщение добавлено в заявку №{request_id}.")
+    """
+    Добавляет сообщение в НОВУЮ таблицу request_message.
+    Саму таблицу Request мы не трогаем (там лежит только первое письмо).
+    """
+    # Проверяем существование заявки
+    cursor.execute("SELECT Request_ID FROM Request WHERE Request_ID = %s", (request_id,))
+    if not cursor.fetchone():
+        logger.warning(f"   -> ⚠️ Заявка №{request_id} не найдена в базе.")
+        return
+
+    # Вставляем сообщение. Sender_Type = 'Client', т.к. пришло письмо
+    sql = """
+        INSERT INTO request_message (Request_ID, Sender_Type, Message_Text, Created_At) 
+        VALUES (%s, 'Client', %s, NOW())
+    """
+    cursor.execute(sql, (request_id, body))
+    conn.commit()
+    
+    # Можно обновить статус заявки, чтобы поднять её вверх в списке
+    # cursor.execute("UPDATE request SET Status = '🔴 Открыта' WHERE Request_ID = %s", (request_id,))
+    # conn.commit()
+    
+    #logger.info(f"   -> ✅ Сообщение добавлено в чат заявки №{request_id}.")
 
 def create_new_ticket(cursor, conn, subject, body, user_id, section_id, sender_email):
-    """Создает новую заявку."""
-    logger.info("   -> 🆕 Новая заявка.")
+    """
+    Создает заявку в таблице Request.
+    В поле Description записываем суть первого письма.
+    """
+    #logger.info("   -> 🆕 Новая заявка.")
     
     full_desc = f"Тема: {subject}\n\n{body}"
     
-    sql = "INSERT INTO Request (Description, User_ID, Court_Section_ID, Status) VALUES (%s, %s, %s, '🔴 Новая')"
+    # Создаем саму заявку
+    sql = """
+        INSERT INTO request 
+        (Description, User_ID, Court_Section_ID, Status, Request_Type_ID, Date_Received) 
+        VALUES (%s, %s, %s, '🔴 Новая', NULL, NOW())
+    """
     cursor.execute(sql, (full_desc, user_id, section_id))
     new_id = cursor.lastrowid
     conn.commit()
     
-    logger.info(f"   -> ✅ Заявка №{new_id} создана.")
+    #logger.info(f"   -> ✅ Заявка №{new_id} создана.")
     
-    # В автоответе обязательно указываем ID, чтобы ответы попадали в эту же ветку
+    # Отправляем автоответ
     reply_subj = f"Заявка №{new_id} принята"
     reply_body = f"Ваше обращение зарегистрировано под номером {new_id}.\nТема: {subject}"
     send_email(sender_email, reply_subj, reply_body)
 
 if __name__ == "__main__":
-    logger.info("🚀 Monitor v3 (Regex Fixed) запущен")
+    #logger.info("🚀 Monitor v3 (Regex Fixed) запущен")
     while True:
         try:
             process_emails()
@@ -261,13 +281,4 @@ if __name__ == "__main__":
         except Exception as e:
             logger.critical(f"Critical Error: {e}")
             time.sleep(300)
-    logger.info("🚀 Монитор v2 (Smart Threading) запущен")
-    while True:
-        try:
-            process_emails()
-            time.sleep(60)
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            logger.critical(f"Сбой: {e}")
-            time.sleep(300)
+    
