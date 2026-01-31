@@ -5,6 +5,7 @@ services:
     image: mysql:8.0
     container_name: mysqldb
     restart: always
+    command: --default-time-zone='+03:00'
     env_file:
       - .env
     environment:
@@ -29,6 +30,7 @@ services:
       - .env
     environment:
       - DB_HOST=mysqldb
+      - TZ=Europe/Moscow
     networks:
       - mynet
     volumes:
@@ -49,6 +51,7 @@ services:
       - .env
     environment:
       - DB_HOST=mysqldb
+      - TZ=Europe/Moscow
     networks:
       - mynet
     depends_on:
@@ -66,6 +69,7 @@ services:
       - .env
     environment:
       - DB_HOST=mysqldb
+      - TZ=Europe/Moscow
     networks:
       - mynet
     depends_on:
