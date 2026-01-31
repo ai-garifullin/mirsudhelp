@@ -1,7 +1,7 @@
 import imaplib
 import email
 from email.header import decode_header
-from db_utils import *
+from db_utils import get_db_connection
 import time
 import re
 import smtplib
@@ -9,35 +9,55 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import os
+import logging
 from dotenv import load_dotenv
+
+# --- 1. НАСТРОЙКИ ЛОГИРОВАНИЯ ---
+# Логи сохраняются в файл и выводятся в консоль
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("email_monitor.log", encoding='utf-8'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
-# --- 1. НАСТРОЙКИ ПОЧТЫ ---
 
+# --- 2. КОНФИГУРАЦИЯ ПОЧТЫ ---
 EMAIL_USER = os.getenv('EMAIL_USER')
-EMAIL_PASS = os.getenv('EMAIL_PASS')
+EMAIL_PASS = os.getenv('EMAIL_PASS') # Здесь должен быть Пароль Приложения!
 IMAP_SERVER = os.getenv('IMAP_SERVER')
-IMAP_PORT = os.getenv('IMAP_PORT')
+IMAP_PORT = int(os.getenv('IMAP_PORT', 993))
 SMTP_SERVER = os.getenv('SMTP_SERVER')
-SMTP_PORT = os.getenv('SMTP_PORT')
+SMTP_PORT = int(os.getenv('SMTP_PORT', 465))
 
+# --- 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
 def send_email(recipient_email, subject, body):
     """Отправляет email от имени системы."""
-    if not recipient_email: return "Ошибка: Email получателя не найден."
+    if not recipient_email:
+        return "Ошибка: Email получателя не найден."
+    
     try:
         msg = MIMEMultipart()
         msg['From'] = EMAIL_USER
         msg['To'] = recipient_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
+
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
         return "✅ Сообщение успешно отправлено!"
     except Exception as e:
+        logger.error(f"Ошибка отправки письма на {recipient_email}: {e}")
         return f"❌ Ошибка отправки: {e}"
 
 def clean_text(text):
+    if not text: return ""
     decoded_list = decode_header(text)
     parts = []
     for content, encoding in decoded_list:
@@ -45,51 +65,70 @@ def clean_text(text):
             parts.append(content.decode(encoding or 'utf-8', 'ignore'))
         else:
             parts.append(str(content))
-    return "".join(parts)
+    return "".join(parts).strip()
+
+def normalize_subject(subject):
+    """
+    Очищает тему для сравнения строк.
+    Удаляет Re:, Fwd:, а также любые упоминания номеров заявок, 
+    чтобы сравнить именно суть проблемы.
+    """
+    # 1. Удаляем любые вариации "Заявка №...", "по заявке №..."
+    # r'заявк[а-я]*' - найдет заявкА, заявкЕ, заявкИ и т.д.
+    s = re.sub(r'заявк[а-я]*\s+№\s*\d+', '', subject, flags=re.IGNORECASE)
+    
+    # 2. Удаляем префиксы ответов (Re:, На:, Ответ: ...)
+    s = re.sub(r'^\s*(re|fwd|fw|aw|ответ|на|service desk)\s*[:\-]\s*', '', s, flags=re.IGNORECASE)
+    
+    # 3. Удаляем лишние пробелы и приводим к нижнему регистру
+    return s.strip().lower()
 
 def get_email_body(msg):
+    text = ""
     if msg.is_multipart():
         for part in msg.walk():
             if part.get_content_type() == "text/plain":
                 try:
-                    return part.get_payload(decode=True).decode()
+                    text = part.get_payload(decode=True).decode()
                 except:
-                    return part.get_payload(decode=True).decode('cp1251', 'ignore')
+                    text = part.get_payload(decode=True).decode('cp1251', 'ignore')
+                break
     else:
         try:
-            return msg.get_payload(decode=True).decode()
+            text = msg.get_payload(decode=True).decode()
         except:
-            return msg.get_payload(decode=True).decode('cp1251', 'ignore')
-    return ""
+            text = msg.get_payload(decode=True).decode('cp1251', 'ignore')
+    return text
 
 def extract_email_address(raw_from):
     match = re.search(r'<(.+?)>', raw_from)
     return match.group(1).strip() if match else raw_from.strip()
 
-# --- 4. ОСНОВНАЯ ЛОГИКА ---
+# --- 3. ЛОГИКА ОБРАБОТКИ ---
 
 def process_emails():
-    print(f"\n[{datetime.now().strftime('%H:%M:%S')}] 🔄 Проверяю почту...")
+    logger.info("🔄 Проверка почты...")
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
         mail.login(EMAIL_USER, EMAIL_PASS)
         mail.select("inbox")
     except Exception as e:
-        print(f"❌ Ошибка подключения: {e}")
+        logger.critical(f"❌ Ошибка IMAP: {e}")
         return
 
     status, messages = mail.search(None, "UNSEEN")
     email_ids = messages[0].split()
 
     if not email_ids:
-        print("📭 Новых писем нет.")
+        logger.info("📭 Новых писем нет.")
         mail.logout()
         return
 
-    print(f"📬 Найдено новых писем: {len(email_ids)}")
-
     conn = get_db_connection()
-    if not conn: return
+    if not conn:
+        logger.error("❌ Нет связи с БД")
+        mail.logout()
+        return
     cursor = conn.cursor()
 
     for e_id in email_ids:
@@ -97,98 +136,138 @@ def process_emails():
             _, msg_data = mail.fetch(e_id, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
 
-            subject = clean_text(msg.get("Subject", "Без темы"))
+            raw_subject = clean_text(msg.get("Subject", "Без темы"))
             raw_from = clean_text(msg.get("From", ""))
             sender_email = extract_email_address(raw_from)
             body = get_email_body(msg).strip()
-            
-            print(f"--- 📨 Обработка письма от {sender_email} с темой: {subject} ---")
 
-            # --- ГЛАВНАЯ ЛОГИКА: ОБНОВЛЕНИЕ ИЛИ СОЗДАНИЕ? ---
-            
-            # Ищем номер в теме (например, "RE: ... Заявка №51")
-            match = re.search(r'Заявка\s+№(\d+)', subject, re.IGNORECASE)
+            logger.info(f"📨 От: {sender_email} | Тема: {raw_subject}")
 
-            if match:
-                # --- ЭТО ОБНОВЛЕНИЕ СУЩЕСТВУЮЩЕЙ ЗАЯВКИ ---
-                request_id = int(match.group(1))
-                print(f"  -> 🔍 Это ответ по заявке №{request_id}.")
-                
-                # 1. Получаем старое описание
-                cursor.execute("SELECT Description FROM Request WHERE Request_ID = %s", (request_id,))
-                res = cursor.fetchone()
-                
-                if res:
-                    old_description = res[0]
-                    # 2. Добавляем новый текст
-                    new_description = f"{old_description}\n\n--- [ОТВЕТ ЗАЯВИТЕЛЯ {datetime.now().strftime('%d.%m %H:%M')}] ---\n{body}"
-                    # 3. Сохраняем
-                    cursor.execute("UPDATE Request SET Description = %s WHERE Request_ID = %s", (new_description, request_id))
-                    conn.commit()
-                    print(f"  -> ✅ 'Чат' в заявке №{request_id} обновлен.")
+            # 1. ПРОВЕРКА ОТПРАВИТЕЛЯ
+            cursor.execute("SELECT Section_ID FROM court_section WHERE Email = %s", (sender_email,))
+            section_res = cursor.fetchone()
+
+            if not section_res:
+                logger.warning(f"⛔ Отказ: {sender_email} не найден.")
+                send_email(sender_email, "Ошибка доступа", "Ваш email не зарегистрирован в системе.")
+                continue
+
+            section_id = section_res[0]
+
+            # 2. ПОИСК ПОЛЬЗОВАТЕЛЯ
+            cursor.execute("SELECT User_ID FROM User WHERE Full_Name = %s", (raw_from,))
+            user_res = cursor.fetchone()
+            user_id = user_res[0] if user_res else None
+            
+            if not user_id:
+                cursor.execute("INSERT INTO User (Full_Name) VALUES (%s)", (raw_from,))
+                user_id = cursor.lastrowid
+
+            # --- ГЛАВНАЯ ЛОГИКА МАРШРУТИЗАЦИИ ---
+            
+            # А) ПОИСК ПО ID (Самый приоритетный)
+            # Ищем "Заявк" + любое окончание (а-я) + пробелы + № + цифры
+            # Пример: "по заявке №10", "Заявка № 10", "ЗАЯВКИ №10"
+            match_id = re.search(r'заявк[а-я]*\s+№\s*(\d+)', raw_subject, re.IGNORECASE)
+            
+            target_request_id = None
+
+            if match_id:
+                potential_id = int(match_id.group(1))
+                # Проверяем, существует ли такая заявка реально
+                cursor.execute("SELECT Request_ID FROM Request WHERE Request_ID = %s", (potential_id,))
+                if cursor.fetchone():
+                    target_request_id = potential_id
+                    logger.info(f"   -> 📎 Найден ID {target_request_id} (из темы письма).")
                 else:
-                    print(f"  -> ⚠️ Заявка №{request_id} не найдена в базе. Создаю новую.")
-                    # Если заявка не найдена, переходим к логике создания
-                    create_new_request(cursor, conn, subject, raw_from, sender_email, body)
+                    logger.warning(f"   -> ⚠️ В теме есть ID {potential_id}, но в базе его нет.")
+
+            # Б) ЕСЛИ ID НЕ НАЙДЕН -> Ищем по совпадению текста темы (Threading)
+            if not target_request_id:
+                clean_subj = normalize_subject(raw_subject)
+                
+                # Ищем открытые заявки этого пользователя
+                sql_search = """
+                    SELECT Request_ID, Description FROM Request 
+                    WHERE User_ID = %s 
+                    AND Status NOT LIKE '🟢%' 
+                    AND Status NOT LIKE '%Закрыт%'
+                """
+                cursor.execute(sql_search, (user_id,))
+                active_requests = cursor.fetchall()
+                
+                for req_id, desc in active_requests:
+                    # Берем первую строку описания (там всегда "Тема: ...")
+                    first_line = desc.split('\n')[0] 
+                    stored_subj = normalize_subject(first_line.replace('Тема:', ''))
                     
+                    # Если очищенные темы совпадают
+                    if stored_subj and stored_subj == clean_subj:
+                        target_request_id = req_id
+                        logger.info(f"   -> 📎 Найдена ветка по теме: '{clean_subj}' -> ID {target_request_id}")
+                        break
+
+            # --- ВЫПОЛНЕНИЕ ДЕЙСТВИЯ ---
+            if target_request_id:
+                update_existing_ticket(cursor, conn, target_request_id, body)
             else:
-                # --- ЭТО СОЗДАНИЕ НОВОЙ ЗАЯВКИ ---
-                create_new_request(cursor, conn, subject, raw_from, sender_email, body)
+                create_new_ticket(cursor, conn, raw_subject, body, user_id, section_id, sender_email)
 
         except Exception as e:
-            print(f"  -> ❌ Ошибка обработки письма: {e}")
-            
+            logger.error(f"❌ Сбой обработки письма: {e}", exc_info=True)
+
     conn.close()
-    mail.close()
     mail.logout()
 
-def create_new_request(cursor, conn, subject, raw_from, sender_email, body):
-    """Отдельная функция для создания новой заявки."""
-    print(f"  -> 🆕 Это новая заявка.")
-    
-    # 1. Ищем участок по email
-    cursor.execute("SELECT Section_ID FROM Court_Section WHERE Email = %s", (sender_email,))
-    section_res = cursor.fetchone()
-
-    if section_res:
-        section_id = section_res[0]
+def update_existing_ticket(cursor, conn, request_id, body):
+    """Обновляет чат."""
+    cursor.execute("SELECT Description FROM Request WHERE Request_ID = %s", (request_id,))
+    res = cursor.fetchone()
+    if res:
+        old_desc = res[0]
+        timestamp = datetime.now().strftime('%d.%m %H:%M')
+        new_entry = f"\n\n--- [ОТВЕТ ЗАЯВИТЕЛЯ {timestamp}] ---\n{body}"
         
-        # 2. Ищем или создаем пользователя
-        cursor.execute("SELECT User_ID FROM User WHERE Full_Name = %s", (raw_from,))
-        user_res = cursor.fetchone()
-        user_id = user_res[0] if user_res else cursor.execute("INSERT INTO User (Full_Name) VALUES (%s)", (raw_from,)) or cursor.lastrowid
-        
-        # 3. Собираем описание
-        full_description = f"Тема: {subject}\n\n{body}"
-        
-        # 4. Создаем заявку
-        sql = "INSERT INTO Request (Description, User_ID, Court_Section_ID, Status, Request_Type_ID) VALUES (%s, %s, %s, '🔴 Новая', 5)"
-        cursor.execute(sql, (full_description, user_id, section_id))
-        request_id = cursor.lastrowid
+        cursor.execute("UPDATE Request SET Description = %s WHERE Request_ID = %s", (old_desc + new_entry, request_id))
         conn.commit()
-        print(f"  -> ✅ Заявка №{request_id} успешно создана.")
-        
-        # 5. ОТПРАВЛЯЕМ АВТООТВЕТ
-        auto_reply_subject = f"Ваша заявка №{request_id} принята"
-        auto_reply_body = f"Здравствуйте!\n\nВаше обращение зарегистрировано в системе Service Desk под номером {request_id}.\n\nТема: {subject}"
-        send_status = send_email(sender_email, auto_reply_subject, auto_reply_body)
-        print(f"  -> {send_status}")
-        
-    else:
-        print(f"  -> ⚠️ Email отправителя {sender_email} не найден в справочнике участков. Заявка не создана.")
+        logger.info(f"   -> ✅ Сообщение добавлено в заявку №{request_id}.")
 
+def create_new_ticket(cursor, conn, subject, body, user_id, section_id, sender_email):
+    """Создает новую заявку."""
+    logger.info("   -> 🆕 Новая заявка.")
+    
+    full_desc = f"Тема: {subject}\n\n{body}"
+    
+    sql = "INSERT INTO Request (Description, User_ID, Court_Section_ID, Status) VALUES (%s, %s, %s, '🔴 Новая')"
+    cursor.execute(sql, (full_desc, user_id, section_id))
+    new_id = cursor.lastrowid
+    conn.commit()
+    
+    logger.info(f"   -> ✅ Заявка №{new_id} создана.")
+    
+    # В автоответе обязательно указываем ID, чтобы ответы попадали в эту же ветку
+    reply_subj = f"Заявка №{new_id} принята"
+    reply_body = f"Ваше обращение зарегистрировано под номером {new_id}.\nТема: {subject}"
+    send_email(sender_email, reply_subj, reply_body)
 
-# --- 5. ЦИКЛ ЗАПУСКА ---
 if __name__ == "__main__":
-    print("🚀 Монитор почты запущен (Ctrl+C для выхода)")
+    logger.info("🚀 Monitor v3 (Regex Fixed) запущен")
     while True:
         try:
             process_emails()
-            print(f"⏳ Следующая проверка через 60 секунд...")
             time.sleep(60)
         except KeyboardInterrupt:
-            print("\nВыход...")
             break
         except Exception as e:
-            print(f"!!! КРИТИЧЕСКАЯ ОШИБКА в главном цикле: {e}")
-            time.sleep(300) # Ждем 5 минут перед повторной попыткой
+            logger.critical(f"Critical Error: {e}")
+            time.sleep(300)
+    logger.info("🚀 Монитор v2 (Smart Threading) запущен")
+    while True:
+        try:
+            process_emails()
+            time.sleep(60)
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            logger.critical(f"Сбой: {e}")
+            time.sleep(300)
