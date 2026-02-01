@@ -5,11 +5,12 @@ from db_utils import * # Убедитесь, что все нужные функ
 from email_monitor import send_email
 import time
 
-conn = get_db_connection()
+
 
 def render_detail_view(request_id):
     """Рисует страницу-карточку с чатом слева и данными справа."""
-    
+    conn = get_db_connection()
+
     # --- 1. ЗАГРУЗКА ДАННЫХ И КНОПКА "НАЗАД" ---
     data = fetch_single_request(request_id)
     if not data:
@@ -155,19 +156,13 @@ def render_detail_view(request_id):
         # --- ФОРМА ОТПРАВКИ ОТВЕТА ---
         recipient_email = data.get('Email') # Email берем из данных участка
         
-        # Проверка, не закрыта ли заявка (опционально, можно убрать disabled)
-        is_closed = "Закрыт" in str(data.get('Status', ''))
+        
     
         with st.form("reply_form", clear_on_submit=True):
             st.write("📤 **Написать ответ заявителю**")
-            reply_text = st.text_area("Текст сообщения:", height=120, disabled=is_closed)
+            reply_text = st.text_area("Текст сообщения:", height=120, disabled=is_disabled)
+            send_btn = st.form_submit_button("📨 Отправить", disabled=is_disabled)
             
-            col1, col2 = st.columns([1, 3])
-            with col1:
-                send_btn = st.form_submit_button("📨 Отправить", disabled=is_closed)
-            with col2:
-                if is_closed:
-                    st.caption("⛔ Заявка закрыта, отвечать нельзя.")
         
         # --- ОБРАБОТКА ОТПРАВКИ ---
         if send_btn and reply_text:
