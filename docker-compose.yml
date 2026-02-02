@@ -22,7 +22,7 @@ services:
   # 2. Дэшборд Диспетчера (Порт 8501)
   app:
     build: .
-    container_name: service_desk_appd
+    container_name: service_desk_app
     restart: always
     ports:
       - "8501:8501"
@@ -70,11 +70,15 @@ services:
     environment:
       - DB_HOST=mysqldb
       - TZ=Europe/Moscow
+      - PYTHONUNBUFFERED=1
     networks:
       - mynet
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       - db
 networks:
   mynet:
 volumes:
   db_data:
+  

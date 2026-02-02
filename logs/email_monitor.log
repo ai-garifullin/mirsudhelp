@@ -1,0 +1,42 @@
+2026-02-02 20:49:36,637 - INFO - 🔄 Проверка почты...
+2026-02-02 20:49:36,962 - INFO - 📭 Новых писем нет.
+2026-02-02 20:50:37,044 - INFO - 🔄 Проверка почты...
+2026-02-02 20:50:37,510 - INFO - 📨 От: lufi.g@yandex.ru | Тема: mxhxkxmx
+2026-02-02 20:50:37,515 - ERROR - ❌ Сбой обработки письма: 1146 (42S02): Table 'service_desk_db.User' doesn't exist
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.9/site-packages/mysql/connector/connection_cext.py", line 772, in cmd_query
+    self._cmysql.query(
+_mysql_connector.MySQLInterfaceError: Table 'service_desk_db.User' doesn't exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/app/email_monitor.py", line 166, in process_emails
+    cursor.execute("SELECT User_ID FROM User WHERE Full_Name = %s", (raw_from,))
+  File "/usr/local/lib/python3.9/site-packages/mysql/connector/cursor_cext.py", line 353, in execute
+    self._connection.cmd_query(
+  File "/usr/local/lib/python3.9/site-packages/mysql/connector/opentelemetry/context_propagation.py", line 97, in wrapper
+    return method(cnx, *args, **kwargs)
+  File "/usr/local/lib/python3.9/site-packages/mysql/connector/connection_cext.py", line 781, in cmd_query
+    raise get_mysql_exception(
+mysql.connector.errors.ProgrammingError: 1146 (42S02): Table 'service_desk_db.User' doesn't exist
+2026-02-02 20:51:37,601 - INFO - 🔄 Проверка почты...
+2026-02-02 20:51:37,915 - INFO - 📭 Новых писем нет.
+2026-02-02 20:52:37,990 - INFO - 🔄 Проверка почты...
+2026-02-02 20:52:38,356 - INFO - 📭 Новых писем нет.
+2026-02-02 20:53:38,433 - INFO - 🔄 Проверка почты...
+2026-02-02 20:53:38,757 - INFO - 📭 Новых писем нет.
+2026-02-02 20:54:55,571 - INFO - 🔄 Проверка почты...
+2026-02-02 20:54:55,820 - INFO - 📭 Новых писем нет.
+2026-02-02 20:55:55,845 - INFO - 🔄 Проверка почты...
+2026-02-02 20:55:56,275 - INFO - 📨 От: lufi.g@yandex.ru | Тема: jgkjflvtvrm
+2026-02-02 20:56:57,505 - INFO - 🔄 Проверка почты...
+2026-02-02 20:56:57,853 - INFO - 📭 Новых писем нет.
+2026-02-02 20:57:57,934 - INFO - 🔄 Проверка почты...
+2026-02-02 20:57:58,253 - INFO - 📭 Новых писем нет.
+2026-02-02 20:58:58,336 - INFO - 🔄 Проверка почты...
+2026-02-02 20:58:58,697 - INFO - 📭 Новых писем нет.
+2026-02-02 20:59:32,367 - INFO - 🔄 Проверка почты...
+2026-02-02 20:59:32,817 - INFO - 📭 Новых писем нет.
+2026-02-02 21:00:28,030 - INFO - 🔄 Проверка почты...
+2026-02-02 21:00:28,409 - INFO - 📭 Новых писем нет.

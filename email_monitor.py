@@ -14,11 +14,19 @@ from dotenv import load_dotenv
 
 # --- 1. НАСТРОЙКИ ЛОГИРОВАНИЯ ---
 # Логи сохраняются в файл и выводятся в консоль
+# Создаем папку logs, если её нет (важно для Docker!)
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+
+# Полный путь к файлу
+log_file = os.path.join(log_dir, "email_monitor.log")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler("email_monitor.log", encoding='utf-8'),
+        # Пишем в папку logs
+        logging.FileHandler(log_file, encoding='utf-8'), 
         logging.StreamHandler()
     ]
 )
@@ -107,7 +115,7 @@ def extract_email_address(raw_from):
 # --- 3. ЛОГИКА ОБРАБОТКИ ---
 
 def process_emails():
-    #logger.info("🔄 Проверка почты...")
+    logger.info("🔄 Проверка почты...")
     try:
         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
         mail.login(EMAIL_USER, EMAIL_PASS)
@@ -120,7 +128,7 @@ def process_emails():
     email_ids = messages[0].split()
 
     if not email_ids:
-        #logger.info("📭 Новых писем нет.")
+        logger.info("📭 Новых писем нет.")
         mail.logout()
         return
 
@@ -141,7 +149,7 @@ def process_emails():
             sender_email = extract_email_address(raw_from)
             body = get_email_body(msg).strip()
 
-           # logger.info(f"📨 От: {sender_email} | Тема: {raw_subject}")
+            logger.info(f"📨 От: {sender_email} | Тема: {raw_subject}")
 
             # 1. ПРОВЕРКА ОТПРАВИТЕЛЯ
             cursor.execute("SELECT Section_ID FROM court_section WHERE Email = %s", (sender_email,))
@@ -155,12 +163,12 @@ def process_emails():
             section_id = section_res[0]
 
             # 2. ПОИСК ПОЛЬЗОВАТЕЛЯ
-            cursor.execute("SELECT User_ID FROM User WHERE Full_Name = %s", (raw_from,))
+            cursor.execute("SELECT User_ID FROM user WHERE Full_Name = %s", (raw_from,))
             user_res = cursor.fetchone()
             user_id = user_res[0] if user_res else None
             
             if not user_id:
-                cursor.execute("INSERT INTO User (Full_Name) VALUES (%s)", (raw_from,))
+                cursor.execute("INSERT INTO user (Full_Name) VALUES (%s)", (raw_from,))
                 user_id = cursor.lastrowid
 
             # --- ГЛАВНАЯ ЛОГИКА МАРШРУТИЗАЦИИ ---
@@ -175,7 +183,7 @@ def process_emails():
             if match_id:
                 potential_id = int(match_id.group(1))
                 # Проверяем, существует ли такая заявка реально
-                cursor.execute("SELECT Request_ID FROM Request WHERE Request_ID = %s", (potential_id,))
+                cursor.execute("SELECT Request_ID FROM request WHERE Request_ID = %s", (potential_id,))
                 if cursor.fetchone():
                     target_request_id = potential_id
                     #logger.info(f"   -> 📎 Найден ID {target_request_id} (из темы письма).")
@@ -188,7 +196,7 @@ def process_emails():
                 
                 # Ищем открытые заявки этого пользователя
                 sql_search = """
-                    SELECT Request_ID, Description FROM Request 
+                    SELECT Request_ID, Description FROM request 
                     WHERE User_ID = %s 
                     AND Status NOT LIKE '🟢%' 
                     AND Status NOT LIKE '%Закрыт%'
@@ -225,7 +233,7 @@ def update_existing_ticket(cursor, conn, request_id, body):
     Саму таблицу Request мы не трогаем (там лежит только первое письмо).
     """
     # Проверяем существование заявки
-    cursor.execute("SELECT Request_ID FROM Request WHERE Request_ID = %s", (request_id,))
+    cursor.execute("SELECT Request_ID FROM request WHERE Request_ID = %s", (request_id,))
     if not cursor.fetchone():
         logger.warning(f"   -> ⚠️ Заявка №{request_id} не найдена в базе.")
         return

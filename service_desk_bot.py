@@ -19,7 +19,7 @@ def start(message):
     conn = get_db_connection()
     if not conn: return
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT District_ID, District_Name FROM District ORDER BY District_Name")
+    cursor.execute("SELECT District_ID, District_Name FROM district ORDER BY District_Name")
     districts = cursor.fetchall()
     conn.close()
 
@@ -48,7 +48,7 @@ def handle_district_command(message):
     # Получаем имя района для подтверждения
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT District_Name FROM District WHERE District_ID = %s", (district_id,))
+    cursor.execute("SELECT District_Name FROM district WHERE District_ID = %s", (district_id,))
     res = cursor.fetchone()
     conn.close()
 
@@ -87,7 +87,7 @@ def process_section(message, text):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     sql = """SELECT s.Section_ID, l.Address_Name 
-             FROM Court_Section s JOIN Locations l ON s.Location_ID = l.Location_ID
+             FROM court_section s JOIN locations l ON s.Location_ID = l.Location_ID
              WHERE s.District_ID = %s AND s.Section_Number = %s"""
     cursor.execute(sql, (user_data[chat_id]['district_id'], text))
     res = cursor.fetchone()
@@ -115,9 +115,9 @@ def process_description(message, text):
     cursor = conn.cursor()
 
     # Юзер
-    cursor.execute("SELECT User_ID FROM User WHERE Full_Name = %s", (user_data[chat_id]['fio'],))
+    cursor.execute("SELECT User_ID FROM user WHERE Full_Name = %s", (user_data[chat_id]['fio'],))
     res = cursor.fetchone()
-    user_id = res[0] if res else cursor.execute("INSERT INTO User (Full_Name) VALUES (%s)", (user_data[chat_id]['fio'],)) or cursor.lastrowid
+    user_id = res[0] if res else cursor.execute("INSERT INTO user (Full_Name) VALUES (%s)", (user_data[chat_id]['fio'],)) or cursor.lastrowid
 
     # Заявка
     sql = "INSERT INTO Request (Description, User_ID, Court_Section_ID, Request_Type_ID, Service_Type, Status) VALUES (%s, %s, %s, 21, 'Удаленно', 'Новая')"
