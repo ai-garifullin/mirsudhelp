@@ -73,6 +73,9 @@ services:
       - PYTHONUNBUFFERED=1
     networks:
       - mynet
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     volumes:
       - ./logs:/app/logs
     depends_on:
