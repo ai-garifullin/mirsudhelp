@@ -68,12 +68,11 @@ services:
     env_file:
       - .env
     environment:
-      - DB_HOST=127.0.0.1
+      - DB_HOST=mysqldb
       - TZ=Europe/Moscow
       - PYTHONUNBUFFERED=1
     networks:
       - mynet
-    network_mode: "host"
     volumes:
       - ./logs:/app/logs
     depends_on:
@@ -96,7 +95,7 @@ services:
       - ./:/app
     depends_on:
       - db
-      
+
 networks:
   mynet:
 volumes:
