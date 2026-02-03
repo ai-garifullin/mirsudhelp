@@ -78,6 +78,25 @@ services:
       - ./logs:/app/logs
     depends_on:
       - db
+
+  manage_users:
+    build: .
+    container_name: service_desk_manage_users
+    # Используем команду, которая не даёт контейнеру завершиться
+    command: tail -f /dev/null
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=mysqldb
+      - TZ=Europe/Moscow
+    networks:
+      - mynet
+    volumes:
+      # Подключаем текущую папку, чтобы видеть все ваши файлы
+      - ./:/app
+    depends_on:
+      - db
+      
 networks:
   mynet:
 volumes:
