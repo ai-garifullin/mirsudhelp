@@ -212,6 +212,27 @@ def update_closed_date(request_id, is_closing):
     conn.commit()
     conn.close()
 
+
+def add_request_message(conn, request_id, sender_type, message_text, author, attachment_path=None):
+    """
+    Добавляет сообщение в БД с указанием автора (логина).
+    """
+    try:
+        cursor = conn.cursor()
+        sql = """
+            INSERT INTO request_message (Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path)
+            VALUES (%s, %s, %s, %s, NOW(), %s)
+        """
+        cursor.execute(sql, (request_id, sender_type, author, message_text, attachment_path))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Database Error: {e}")
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+
 def log_action(login, action, details):
     """Записывает действие пользователя в лог."""
     try:

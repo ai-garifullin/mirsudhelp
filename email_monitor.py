@@ -7,6 +7,9 @@ import re
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import mimetypes
+from email.mime.base import MIMEBase
+from email import encoders
 from datetime import datetime
 import os
 import logging
@@ -44,8 +47,8 @@ SMTP_PORT = int(os.getenv('SMTP_PORT', 465))
 
 # --- 3. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
 
-def send_email(recipient_email, subject, body):
-    """Отправляет email от имени системы."""
+def send_email(recipient_email, subject, body, attachment=None):
+    """Отправляет email с поддержкой вложений."""
     if not recipient_email:
         return "Ошибка: Email получателя не найден."
     
@@ -54,12 +57,49 @@ def send_email(recipient_email, subject, body):
         msg['From'] = EMAIL_USER
         msg['To'] = recipient_email
         msg['Subject'] = subject
+        
+        # Добавляем текст письма
         msg.attach(MIMEText(body, 'plain'))
 
+        # Логика работы с вложением
+        if attachment and os.path.exists(attachment):
+            try:
+                # Определяем тип файла (MIME-тип)
+                ctype, encoding = mimetypes.guess_type(attachment)
+                if ctype is None or encoding is not None:
+                    ctype = 'application/octet-stream'
+                
+                maintype, subtype = ctype.split('/', 1)
+                
+                # Читаем файл в бинарном режиме
+                with open(attachment, "rb") as f:
+                    part = MIMEBase(maintype, subtype)
+                    part.set_payload(f.read())
+                
+                # Кодируем в base64 для передачи по почте
+                encoders.encode_base64(part)
+                
+                # Добавляем заголовок с именем файла
+                # Используем os.path.basename, чтобы в письме было только имя "image.png", а не весь путь
+                filename = os.path.basename(attachment)
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename="{filename}"'
+                )
+                
+                msg.attach(part)
+            except Exception as file_err:
+                logger.error(f"Не удалось прикрепить файл {attachment}: {file_err}")
+                # Продолжаем отправку письма даже если файл не прикрепился, 
+                # либо можно прервать и вернуть ошибку
+
+        # Отправка
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
             server.login(EMAIL_USER, EMAIL_PASS)
             server.send_message(msg)
+            
         return "✅ Сообщение успешно отправлено!"
+        
     except Exception as e:
         logger.error(f"Ошибка отправки письма на {recipient_email}: {e}")
         return f"❌ Ошибка отправки: {e}"

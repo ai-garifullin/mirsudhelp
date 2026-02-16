@@ -32,12 +32,33 @@ def render_detail_view(request_id):
     if not is_admin:
         is_disabled = True
 
+    # Получаем логин текущего пользователя для лога
+    current_user = st.session_state.get("user_login", "Unknown")
+
     # --- 2. ДЕЛИМ ЭКРАН НА ДВЕ КОЛОНКИ ---
     left_col, right_col = st.columns([2, 1])
 
     # =================================================
     # ЛЕВАЯ КОЛОНКА: ЧАТ И ОТПРАВКА СООБЩЕНИЙ
     # =================================================
+    def display_attachment(file_path):
+        """Отображает файл в зависимости от типа под спойлером"""
+        if file_path and os.path.exists(file_path):
+            file_ext = os.path.splitext(file_path)[1].lower()
+            file_name = os.path.basename(file_path)
+            
+            with st.expander("📎 Вложение: " + file_name):
+                if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
+                    st.image(file_path, use_container_width=True)
+                else:
+                    # Для документов даем ссылку на скачивание
+                    with open(file_path, "rb") as f:
+                        st.download_button(
+                            label=f"Скачать {file_name}",
+                            data=f,
+                            file_name=file_name,
+                            key=file_path # уникальный ключ
+                        )
     with left_col:
         st.subheader("✉️ Переписка с заявителем")
         
@@ -84,6 +105,14 @@ def render_detail_view(request_id):
                     width: 100%;
                     border: 1px solid #ffeeba;
                 }
+                /* Стиль для внутренних заметок (сотрудники видят, заявитель — нет) */
+                .internal-msg {
+                    background-color: #b6d7a8; /* Светло-зеленый, как стикер */
+                    color: #1f1f1f;
+                    align-self: flex-start;
+                    border-bottom-left-radius: 2px;
+                    border: 1px solid #6aa84f;
+                }
                 .meta-info {
                     font-size: 12px;
                     color: #6c757d;
@@ -118,7 +147,7 @@ def render_detail_view(request_id):
             # conn должен быть определен выше в вашем коде
             cursor = conn.cursor()
             sql_chat = """
-                SELECT Sender_Type, Message_Text, Created_At 
+                SELECT Sender_Type, Message_Text, Created_At, Attachment_Path, Author
                 FROM request_message 
                 WHERE Request_ID = %s 
                 ORDER BY Created_At ASC
@@ -127,14 +156,17 @@ def render_detail_view(request_id):
             messages = cursor.fetchall()
             
             # 3. ЦИКЛ ОТРИСОВКИ СООБЩЕНИЙ
-            for sender, text, created_at in messages:
+            for sender, text, created_at, attachment_path, author in messages:
                 # Определяем стиль и заголовок
                 if sender == 'Client':
                     css_class = "client-msg"
-                    sender_name = "👤 ЗАЯВИТЕЛЬ"
+                    sender_name = f"👤 {data.get('User_Name', 'Не указан')}"
+                elif sender == 'Internal':
+                    css_class = "internal-msg"
+                    sender_name = f"📌{author}"
                 else:
                     css_class = "support-msg"
-                    sender_name = "🛠 ТЕХПОДДЕРЖКА"
+                    sender_name = f'🛠 {author}'
                 
                 time_formatted = created_at.strftime('%d.%m.%Y %H:%M')
                 text_formatted = text.replace('\n', '<br>')
@@ -148,49 +180,67 @@ def render_detail_view(request_id):
                         {text_formatted}
                     </div>
                 """, unsafe_allow_html=True)
+                if attachment_path:
+                    display_attachment(attachment_path)
                 
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.divider()
 
-        # --- ФОРМА ОТПРАВКИ ОТВЕТА ---
-        recipient_email = data.get('Email') # Email берем из данных участка
-        
-        
-    
-        with st.form("reply_form", clear_on_submit=True):
-            st.write("📤 **Написать ответ заявителю**")
-            reply_text = st.text_area("Текст сообщения:", height=120, disabled=is_disabled)
-            send_btn = st.form_submit_button("📨 Отправить", disabled=is_disabled)
-            
-        
-        # --- ОБРАБОТКА ОТПРАВКИ ---
-        if send_btn and reply_text:
-            if not recipient_email:
-                st.error("❌ У этого участка не указан Email в базе данных!")
-            else:
-                # 1. Отправляем реальное письмо
-                subject = f"Re: Заявка №{request_id}" # Тема важна для монитора!
-                
-                # Вызов функции из db_utils
-                status_msg = send_email(recipient_email, subject, reply_text)
-                
-                if "✅" in status_msg:
-                    st.toast("Письмо успешно отправлено!", icon="✅")
+        # --- ФОРМА ОТПРАВКИ (ОТВЕТ И ЗАМЕТКИ) ---
+        recipient_email = data.get('Email')
+
+        # Создаем две вкладки
+        tab_reply, tab_internal = st.tabs(["✉️ Ответ заявителю", "🔒 Внутренняя заметка"])
+
+        # --- ВКЛАДКА: ОТВЕТ ЗАЯВИТЕЛЮ (уходит на почту) ---
+        with tab_reply:
+            with st.form("reply_form", clear_on_submit=True):
+                st.write("📤 **Написать ответ заявителю**")
+                reply_text = st.text_area("Текст сообщения:", height=120, disabled=is_disabled, key="ta_reply")
+                uploaded_file = st.file_uploader("Прикрепить медиафайл:", 
+                                                type=['png', 'jpg', 'jpeg', 'pdf', 'zip'],
+                                                disabled=is_disabled, key="file_reply")
+                send_btn = st.form_submit_button("📨 Отправить почту", disabled=is_disabled)
+
+            if send_btn and (reply_text or uploaded_file):
+                if not recipient_email:
+                    st.error("❌ У этого участка не указан Email!")
+                else:
+                    file_save_path = None
+                    if uploaded_file:
+                        os.makedirs("attachments", exist_ok=True)
+                        file_save_path = os.path.join("attachments", f"{int(time.time())}_{uploaded_file.name}")
+                        with open(file_save_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+
+                    subject = f"Re: Заявка №{request_id}"
+                    status_msg = send_email(recipient_email, subject, reply_text, attachment=file_save_path)
                     
-                    # 2. Сохраняем в историю (request_message)
-                    sql_insert = """
-                        INSERT INTO request_message (Request_ID, Sender_Type, Message_Text, Created_At)
-                        VALUES (%s, 'Support', %s, NOW())
-                    """
-                    cursor.execute(sql_insert, (request_id, reply_text))
-                    conn.commit()
-                    
-                    # 3. Перезагружаем страницу, чтобы увидеть свое сообщение
-                    time.sleep(1) # Небольшая пауза для базы
+                    if "✅" in status_msg:
+                        # Используем новую функцию из db_utils
+                        if add_request_message(conn, request_id, 'Support', reply_text, current_user, file_save_path):
+                            st.toast("Письмо успешно отправлено!", icon="✅")
+                            time.sleep(1)
+                            st.rerun()
+                    else:
+                        st.error(f"Ошибка: {status_msg}")
+
+        # --- ВКЛАДКА: ВНУТРЕННЯЯ ЗАМЕТКА (только в БД) ---
+        with tab_internal:
+            with st.form("internal_form", clear_on_submit=True):
+                st.write("📌 **Заметка для внутреннего пользования**")
+                internal_text = st.text_area("Комментарий (не виден заявителю):", height=120, disabled=is_disabled, key="ta_internal")
+                note_btn = st.form_submit_button("💾 Сохранить заметку", disabled=is_disabled)
+
+            if note_btn and internal_text:
+                # Для заметок просто вызываем функцию БД с типом 'Internal'
+                if add_request_message(conn, request_id, 'Internal', internal_text, current_user):
+                    st.toast("Заметка сохранена!", icon="📌")
+                    time.sleep(1)
                     st.rerun()
                 else:
-                    st.error(f"Ошибка при отправке: {status_msg}")
+                    st.error("Ошибка при сохранении заметки в базу данных")
 
     # =================================================
     # ПРАВАЯ КОЛОНКА: ИНФОРМАЦИЯ И РЕДАКТИРОВАНИЕ
@@ -249,8 +299,7 @@ def render_detail_view(request_id):
             submit_button_card = st.form_submit_button("💾 Сохранить", type="primary", disabled=is_disabled)
 
             if submit_button_card:
-                # Получаем логин текущего пользователя для лога
-                current_user = st.session_state.get("user_login", "Unknown")
+                
                 
                 # 1. СТАТУС
                 # Сравниваем новое значение (status) со старым из базы (data['Status'])

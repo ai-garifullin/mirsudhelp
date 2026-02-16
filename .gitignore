@@ -5,3 +5,4 @@ mysql_data
 .idea
 .env
 init.sql
+init_old.sql
