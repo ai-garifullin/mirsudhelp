@@ -228,19 +228,33 @@ def render_detail_view(request_id):
 
         # --- ВКЛАДКА: ВНУТРЕННЯЯ ЗАМЕТКА (только в БД) ---
         with tab_internal:
-            with st.form("internal_form", clear_on_submit=True):
+            with st.form("internal_note_form", clear_on_submit=True):
                 st.write("📌 **Заметка для внутреннего пользования**")
-                internal_text = st.text_area("Комментарий (не виден заявителю):", height=120, disabled=is_disabled, key="ta_internal")
-                note_btn = st.form_submit_button("💾 Сохранить заметку", disabled=is_disabled)
+                internal_text = st.text_area("Комментарий:", height=120, key="ta_internal")
+                
+                # Добавляем загрузку файла для внутреннего пользования
+                internal_file = st.file_uploader("Прикрепить внутренний документ/фото:", 
+                                                type=['png', 'jpg', 'jpeg', 'pdf', 'zip'], 
+                                                key="internal_file_upload")
+                
+                note_btn = st.form_submit_button("💾 Сохранить заметку")
 
-            if note_btn and internal_text:
-                # Для заметок просто вызываем функцию БД с типом 'Internal'
-                if add_request_message(conn, request_id, 'Internal', internal_text, current_user):
-                    st.toast("Заметка сохранена!", icon="📌")
+            if note_btn and (internal_text or internal_file):
+                file_save_path = None
+                
+                # Если файл прикреплен, сохраняем его локально
+                if internal_file:
+                    os.makedirs("attachments", exist_ok=True)
+                    file_save_path = os.path.join("attachments", f"internal_{int(time.time())}_{internal_file.name}")
+                    with open(file_save_path, "wb") as f:
+                        f.write(internal_file.getbuffer())
+
+                # Вызываем вашу функцию из db_utils
+                # ВАЖНО: здесь НЕТ функции send_email, файл остается только у нас
+                if add_request_message(conn, request_id, 'Internal', internal_text, current_user, file_save_path):
+                    st.toast("Внутренняя заметка с файлом сохранена", icon="📌")
                     time.sleep(1)
                     st.rerun()
-                else:
-                    st.error("Ошибка при сохранении заметки в базу данных")
 
     # =================================================
     # ПРАВАЯ КОЛОНКА: ИНФОРМАЦИЯ И РЕДАКТИРОВАНИЕ

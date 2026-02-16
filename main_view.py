@@ -61,13 +61,16 @@ def render_main_view():
         return output.getvalue()
 
     excel_data = to_excel(data)
-
-    st.download_button(
-        label="📥 Скачать отчет в Excel",
-        data=excel_data,
-        file_name='report.xlsx',
-        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    )
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        st.download_button(
+            label="📥 Скачать отчет в Excel",
+            data=excel_data,
+            file_name='report.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    with col2:
+        st.link_button("Создать заявку", "https://mirsudhelp.ru")
     
     # Определяем, заблокирована ли таблица
     is_table_disabled = show_completed_only

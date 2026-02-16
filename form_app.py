@@ -1,5 +1,7 @@
 import streamlit as st
-from db_utils import get_lookup_options, get_db_connection
+import os
+import time
+from db_utils import get_lookup_options, get_db_connection, add_request_message
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,6 +36,15 @@ def create_request(data):
         cursor.execute(sql, (full_description, user_id, data['section_id'], data['request_type_id']))
         request_id = cursor.lastrowid
         conn.commit()
+
+        if uploaded_file and request_id:
+            os.makedirs("attachments", exist_ok=True)
+            file_path = os.path.join("attachments", f"web_{int(time.time())}_{uploaded_file.name}")
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            
+            # Записываем файл в таблицу сообщений
+            add_request_message(conn, request_id, 'Client', "Вложение к новой заявке", 'Portal', file_path)
         return request_id
     except Exception as e:
         print(f"Ошибка создания заявки: {e}")
@@ -96,9 +107,14 @@ with st.form("new_request_form", clear_on_submit=True): # clear_on_submit очи
     selected_type_name = st.selectbox("Тип заявки:", options=type_names, placeholder='Выбрать из списка', key="f_type")
     description = st.text_area("Подробное описание проблемы:", height=150, key="f_desc")
     
+    uploaded_file = st.file_uploader("Прикрепить скриншот или документ (необязательно):", 
+                                    type=['png', 'jpg', 'jpeg', 'pdf', 'zip'], 
+                                    key="f_file")
     submit_button = st.form_submit_button("🚀 Отправить заявку", type="primary")
 
 if submit_button:
+    if uploaded_file:
+        st.write(f"Файл получен: {uploaded_file.name}, размер: {uploaded_file.size}")
     if not all([user_fullname, phone, selected_district_name, section_number, selected_type_name, description]):
         st.error("❌ Пожалуйста, заполните все поля.")
     else:

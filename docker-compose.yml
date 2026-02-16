@@ -16,6 +16,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./attachments:/app/attachments
     ports:
       - "127.0.0.1:3307:3306"
 
@@ -35,6 +36,7 @@ services:
       - mynet
     volumes:
       - ./:/app
+      - ./attachments:/app/attachments
     depends_on:
       - db
     # Запускаем именно dashboard.py
@@ -54,6 +56,8 @@ services:
       - TZ=Europe/Moscow
     networks:
       - mynet
+    volumes:
+      - ./attachments:/app/attachments
     depends_on:
       - db
     # Запускаем form_app.py на другом порту
@@ -75,6 +79,7 @@ services:
       - mynet
     volumes:
       - ./logs:/app/logs
+      - ./attachments:/app/attachments
     depends_on:
       - db
 
