@@ -264,7 +264,7 @@ def render_detail_view(request_id):
         
         with st.form("detail_form"):
             # Редактируемые поля
-            service_opts = ["Удаленно", "Выезд"]
+            service_opts = ["Удаленно", "Выезд", "Дубль"]
             current_service = data.get('Service_Type', 'Удаленно')
     
             executors_map = get_lookup_options("executor", "Executor_ID", "Full_Name")
