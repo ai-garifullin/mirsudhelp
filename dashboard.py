@@ -1,6 +1,7 @@
 import streamlit as st
 import hashlib
 import json
+import datetime
 from streamlit_cookies_manager import EncryptedCookieManager
 
 from db_utils import * 
@@ -95,17 +96,41 @@ def check_login():
                 st.session_state["user_login"] = user_data['login']
                 st.session_state["user_role"] = user_data['role']
                 
-                cookie_value = json.dumps({
-                    'login': user_data['login'],
-                    # Роль в куки можно не писать, мы её все равно проверяем по базе
-                })
+                cookie_value = json.dumps({'login': user_data['login']})
+                
+                # 1. Обычное сохранение (для Windows/Android)
                 cookies['auth_token'] = cookie_value
                 cookies.save()
+
+                # 2. "Магия" для iOS/Safari: 
+                # Мы дублируем запись куки через JavaScript с указанием срока жизни 30 дней.
+                # EncryptedCookieManager добавляет префикс, учитываем это.
+                full_cookie_name = f"mirsud_app_auth_token"
+                
+                # Кодируем значение, чтобы JS его правильно воспринял
+                import urllib.parse
+                safe_value = urllib.parse.quote(cookies['auth_token']) # Берем уже зашифрованное библиотекой значение
+                
+                js_fix = f"""
+                <script>
+                    var name = "{full_cookie_name}";
+                    var value = "{safe_value}";
+                    var days = 30;
+                    var date = new Date();
+                    date.setTime(date.getTime() + (days*24*60*60*1000));
+                    var expires = "; expires=" + date.toUTCString();
+                    // Записываем куку так, чтобы Safari её запомнил
+                    document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax; Secure";
+                </script>
+                """
+                st.components.v1.html(js_fix, height=0)
                 
                 log_action(user_data['login'], 'LOGIN', 'Успешный вход')
+                
+                # Небольшая пауза, чтобы JS успел отработать перед рераном
+                import time
+                time.sleep(0.5)
                 st.rerun()
-            else:
-                st.error("Неверный пароль")
     return False
 
 
