@@ -145,10 +145,27 @@ if check_login():
             st.stop()
     
     # --- "РОУТЕР" (остается без изменений) ---
+    # --- ОБНОВЛЕННЫЙ "РОУТЕР" ---
     if 'selected_request_id' not in st.session_state:
         st.session_state.selected_request_id = None
 
+    # 1. Перехватываем ID из прямой ссылки (если есть)
+    if "id" in st.query_params:
+        url_id = st.query_params["id"]
+        if url_id.isdigit():
+            st.session_state.selected_request_id = int(url_id)
+
+    # 2. Отрисовка нужного экрана
     if st.session_state.selected_request_id is None:
+        # Если заявка не выбрана, на всякий случай подчищаем URL 
+        # (чтобы там не висел старый id)
+        if "id" in st.query_params:
+            del st.query_params["id"]
+        
         render_main_view()
     else:
+        # Принудительно записываем ID в URL, чтобы пользователь 
+        # всегда мог скопировать актуальную ссылку из адресной строки
+        st.query_params["id"] = st.session_state.selected_request_id
+        
         render_detail_view(st.session_state.selected_request_id)
