@@ -111,31 +111,50 @@ def check_login():
                 import urllib.parse
                 safe_value = urllib.parse.quote(cookies['auth_token']) # Берем уже зашифрованное библиотекой значение
                 
+                full_cookie_name = f"mirsud_app_auth_token"
+                
+                import urllib.parse
+                # Берем зашифрованное значение
+                cookie_val = cookies['auth_token'] 
+                # Важно: библиотека EncryptedCookieManager иногда возвращает объект, 
+                # приводим к строке, если нужно
+                safe_value = urllib.parse.quote(str(cookie_val)) 
+                
                 js_fix = f"""
                 <script>
-                    var name = "{full_cookie_name}";
-                    var value = "{safe_value}";
-                    var days = 30;
-                    var date = new Date();
-                    date.setTime(date.getTime() + (days*24*60*60*1000));
-                    var expires = "; expires=" + date.toUTCString();
-                    // Записываем куку так, чтобы Safari её запомнил
-                    document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax; Secure";
+                    function setCookie(name, value, days) {{
+                        var expires = "";
+                        if (days) {{
+                            var date = new Date();
+                            date.setTime(date.getTime() + (days*24*60*60*1000));
+                            expires = "; expires=" + date.toUTCString();
+                        }}
+                        // ВАЖНО: Добавляем SameSite=Lax и Secure. 
+                        // Без Secure на HTTPS Safari часто игнорирует куку.
+                        document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax; Secure";
+                        
+                        // Отладочный лог в консоль (можно увидеть через Mac или симулятор)
+                        console.log("Cookie set: " + name);
+                    }}
+                    
+                    setCookie("{full_cookie_name}", "{safe_value}", 30);
                 </script>
                 """
-                st.components.v1.html(js_fix, height=0)
+                # Увеличиваем высоту до 1, чтобы компонент точно "отрендерился" в DOM
+                st.components.v1.html(js_fix, height=1)
                 
                 log_action(user_data['login'], 'LOGIN', 'Успешный вход')
                 
                 # Небольшая пауза, чтобы JS успел отработать перед рераном
                 import time
-                time.sleep(0.5)
+                time.sleep(1)
                 st.rerun()
     return False
 
 
 if check_login():
-    
+    if not cookies.ready():
+        st.stop()
     # --- НОВАЯ КНОПКА ВЫХОДА ---
     with st.sidebar:
         st.success(f"Вы вошли как: **{st.session_state.get('user_login')}**")
