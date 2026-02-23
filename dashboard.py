@@ -1,7 +1,6 @@
 import streamlit as st
 import hashlib
 import json
-import datetime
 from streamlit_cookies_manager import EncryptedCookieManager
 
 from db_utils import * 
@@ -96,55 +95,12 @@ def check_login():
                 st.session_state["user_login"] = user_data['login']
                 st.session_state["user_role"] = user_data['role']
                 
-                cookie_value = json.dumps({'login': user_data['login']})
-                
-                # 1. Обычное сохранение (для Windows/Android)
+                cookie_value = json.dumps({
+                    'login': user_data['login'],
+                    # Роль в куки можно не писать, мы её все равно проверяем по базе
+                })
                 cookies['auth_token'] = cookie_value
                 cookies.save()
-
-                # 2. "Магия" для iOS/Safari: 
-                # Мы дублируем запись куки через JavaScript с указанием срока жизни 30 дней.
-                # EncryptedCookieManager добавляет префикс, учитываем это.
-                full_cookie_name = f"mirsud_app_auth_token"
-                
-                # Кодируем значение, чтобы JS его правильно воспринял
-                import urllib.parse
-                safe_value = urllib.parse.quote(cookies['auth_token']) # Берем уже зашифрованное библиотекой значение
-                
-                full_cookie_name = f"mirsud_app_auth_token"
-                
-                import urllib.parse
-                # Берем зашифрованное значение
-                cookie_val = cookies['auth_token'] 
-                # Важно: библиотека EncryptedCookieManager иногда возвращает объект, 
-                # приводим к строке, если нужно
-                safe_value = urllib.parse.quote(str(cookie_val)) 
-                
-                js_fix = f"""
-                <script>
-                    function setPersistentCookie() {{
-                        var name = "{full_cookie_name}";
-                        var value = "{safe_value}";
-                        var date = new Date();
-                        date.setTime(date.getTime() + (30*24*60*60*1000));
-                        var expires = "; expires=" + date.toUTCString();
-                        
-                        // Пытаемся записать в основной документ и во фрейм
-                        var cookieStr = name + "=" + value + expires + "; path=/; SameSite=Lax; Secure";
-                        
-                        try {{
-                            // Пытаемся "пробиться" к родителю
-                            parent.document.cookie = cookieStr;
-                        }} catch (e) {{
-                            // Если родитель заблокирован, пишем в текущий контекст
-                            document.cookie = cookieStr;
-                        }}
-                    }}
-                    setPersistentCookie();
-                </script>
-                """
-                # Добавляем небольшой визуальный элемент, чтобы Streamlit не "ленился" рендерить фрейм
-                st.components.v1.html(js_fix, height=2)
                 
                 log_action(user_data['login'], 'LOGIN', 'Успешный вход')
                 
@@ -152,6 +108,8 @@ def check_login():
                 import time
                 time.sleep(1)
                 st.rerun()
+            else:
+                st.error("Неверный пароль")
     return False
 
 
