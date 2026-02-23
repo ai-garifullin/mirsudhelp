@@ -14,7 +14,7 @@ def render_main_view():
     conn.close()
 
     # Делим строку на 5 колонок с разными пропорциями
-    col1, col2, col3, col4, col5, col6 = st.columns([2.5, 1.5, 1.5, 1, 1, 0.5])
+    col1, col2, col3, col4, col5 = st.columns([2.5, 1.5, 1.5, 1.5, 1], vertical_alignment="bottom")
 
     with col1:
         f_addr = st.multiselect("📍 Адрес:", options=all_addresses, placeholder="Выберите адрес")
