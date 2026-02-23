@@ -122,26 +122,29 @@ def check_login():
                 
                 js_fix = f"""
                 <script>
-                    function setCookie(name, value, days) {{
-                        var expires = "";
-                        if (days) {{
-                            var date = new Date();
-                            date.setTime(date.getTime() + (days*24*60*60*1000));
-                            expires = "; expires=" + date.toUTCString();
-                        }}
-                        // ВАЖНО: Добавляем SameSite=Lax и Secure. 
-                        // Без Secure на HTTPS Safari часто игнорирует куку.
-                        document.cookie = name + "=" + (value || "") + expires + "; path=/; SameSite=Lax; Secure";
+                    function setPersistentCookie() {{
+                        var name = "{full_cookie_name}";
+                        var value = "{safe_value}";
+                        var date = new Date();
+                        date.setTime(date.getTime() + (30*24*60*60*1000));
+                        var expires = "; expires=" + date.toUTCString();
                         
-                        // Отладочный лог в консоль (можно увидеть через Mac или симулятор)
-                        console.log("Cookie set: " + name);
+                        // Пытаемся записать в основной документ и во фрейм
+                        var cookieStr = name + "=" + value + expires + "; path=/; SameSite=Lax; Secure";
+                        
+                        try {{
+                            // Пытаемся "пробиться" к родителю
+                            parent.document.cookie = cookieStr;
+                        }} catch (e) {{
+                            // Если родитель заблокирован, пишем в текущий контекст
+                            document.cookie = cookieStr;
+                        }}
                     }}
-                    
-                    setCookie("{full_cookie_name}", "{safe_value}", 30);
+                    setPersistentCookie();
                 </script>
                 """
-                # Увеличиваем высоту до 1, чтобы компонент точно "отрендерился" в DOM
-                st.components.v1.html(js_fix, height=1)
+                # Добавляем небольшой визуальный элемент, чтобы Streamlit не "ленился" рендерить фрейм
+                st.components.v1.html(js_fix, height=2)
                 
                 log_action(user_data['login'], 'LOGIN', 'Успешный вход')
                 
