@@ -111,9 +111,13 @@ def fetch_main_data(filters):
         where_clauses.append(f"r.Service_Type IN ({','.join(['%s']*len(filters['service_type']))})")
         params.extend(filters['service_type'])
     
+    # --- НОВЫЙ ФИЛЬТР ПО СТАТУСУ ---
     if filters.get('status'):
-        where_clauses.append(f"r.Status IN ({','.join(['%s']*len(filters['status']))})")
-        params.extend(filters['status'])   
+        # Если включен режим "только выполненные"
+        where_clauses.append("r.Status = '✅ Выполнена'")
+    else:
+        # Иначе показываем все, кроме выполненных
+        where_clauses.append("(r.Status != '✅ Выполнена' OR r.Status IS NULL)")    
         
     if where_clauses:
         base_query += " WHERE " + " AND ".join(where_clauses)
