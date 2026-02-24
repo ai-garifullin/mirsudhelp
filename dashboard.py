@@ -14,6 +14,16 @@ load_dotenv()
 # --- 2. НАСТРОЙКИ ---
 st.set_page_config(page_title="Service Desk Mirsud", layout="wide")
 
+# Мета-теги для iOS (PWA), чтобы куки жили дольше
+st.markdown("""
+    <head>
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="Mirsud SD">
+        <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5607/5607325.png">
+    </head>
+""", unsafe_allow_html=True)
+
 # Инициализация менеджера Cookies
 # Пароль может быть любой секретной строкой, он нужен для шифрования
 cookie_password=os.getenv('cookie_encryption_key')
