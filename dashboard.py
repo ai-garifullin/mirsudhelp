@@ -10,12 +10,11 @@ from db_utils import *
 from main_view import render_main_view
 from views import render_detail_view
 
+# --- 1. ЗАГРУЗКА НАСТРОЕК ---
 load_dotenv()
-
-# --- 2. НАСТРОЙКИ ---
 st.set_page_config(page_title="Service Desk Mirsud", layout="wide")
 
-# Инициализация менеджера Cookies
+# Инициализация кук
 cookie_password = os.getenv('cookie_encryption_key')
 cookies = EncryptedCookieManager(
     prefix="mirsud_app_",
@@ -24,21 +23,22 @@ cookies = EncryptedCookieManager(
 if not cookies.ready():
     st.stop()
 
-# Конфигурация Magic Keys (Токен в URL : Логин в БД)
+# Загрузка Magic Keys из .env (JSON формат)
 magic_keys_raw = os.getenv('MAGIC_KEYS_JSON', '{}')
 try:
     MAGIC_KEYS = json.loads(magic_keys_raw)
 except json.JSONDecodeError:
-    st.error("Ошибка: Неверный формат MAGIC_KEYS_JSON в файле .env")
+    st.error("Ошибка .env: Неверный формат MAGIC_KEYS_JSON")
     MAGIC_KEYS = {}
-    
-# --- 3. ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
+
+# --- 2. ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
 def check_login():
     """Управляет входом: Magic Link -> Cookies -> Session -> Form"""
     
-    # 1. Проверка Magic Link в URL (Приоритет для iOS)
-    query_params = st.query_params
-    auth_token = query_params.get("auth")
+    # А. Обработка Magic Link (Приоритет)
+    # Используем st.query_params как словарь
+    current_params = st.query_params
+    auth_token = current_params.get("auth")
 
     if auth_token in MAGIC_KEYS and not st.session_state.get("logged_in"):
         target_login = MAGIC_KEYS[auth_token]
@@ -51,22 +51,21 @@ def check_login():
             conn.close()
             
             if user_db:
-                # Авторизуем
                 st.session_state["logged_in"] = True
                 st.session_state["user_login"] = user_db['login']
                 st.session_state["user_role"] = user_db['role']
                 
-                # Сохраняем куку на будущее (для Windows/Android)
-                cookie_value = json.dumps({'login': user_db['login']})
-                cookies['auth_token'] = cookie_value
+                # Сохраняем куку для Windows/Android
+                cookies['auth_token'] = json.dumps({'login': user_db['login']})
                 cookies.save()
                 
-                log_action(user_db['login'], 'LOGIN_MAGIC', 'Вход по ссылке')
-                # Удаляем auth из URL, чтобы ссылка стала "чистой"
+                log_action(user_db['login'], 'LOGIN_MAGIC', 'Вход по Magic Link')
+                
+                # ВАЖНО: Удаляем только auth, сохраняя id заявки, если он был в URL
                 del st.query_params["auth"]
                 st.rerun()
 
-    # 2. Восстановление из Cookie
+    # Б. Восстановление из Cookie
     auth_token_json = cookies.get("auth_token")
     if auth_token_json and not st.session_state.get("logged_in"):
         try:
@@ -78,7 +77,7 @@ def check_login():
                 del cookies['auth_token']
                 cookies.save()
 
-    # 3. Проверка актуальности (если залогинен через Cookie или Magic)
+    # В. Проверка активной сессии
     if st.session_state.get("logged_in"):
         login = st.session_state.get("user_login")
         conn = get_db_connection()
@@ -93,59 +92,50 @@ def check_login():
                 return True
             else:
                 st.session_state["logged_in"] = False
-                if 'auth_token' in cookies:
-                    del cookies['auth_token']
-                    cookies.save()
-                st.error("Аккаунт заблокирован или удален.")
+                st.error("Доступ запрещен или аккаунт удален.")
     
-    # 4. Форма входа (Резерв)
+    # Г. Форма входа (если нет кук и нет Magic Link)
     with st.form("login_form"):
         st.header("Вход в Service Desk")
         login_input = st.text_input("Логин")
         password_input = st.text_input("Пароль", type="password")
-        submitted = st.form_submit_button("Войти")
-
-        if submitted:
+        if st.form_submit_button("Войти"):
             conn = get_db_connection()
-            if not conn: return False
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT * FROM system_users WHERE login = %s", (login_input,))
-            user_data = cursor.fetchone()
-            conn.close()
-            
-            if user_data:
-                pwd_hash = hashlib.sha256(password_input.encode()).hexdigest()
-                if user_data['password_hash'] == pwd_hash:
+            if conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM system_users WHERE login = %s", (login_input,))
+                user_data = cursor.fetchone()
+                conn.close()
+                
+                if user_data and hashlib.sha256(password_input.encode()).hexdigest() == user_data['password_hash']:
                     st.session_state["logged_in"] = True
                     st.session_state["user_login"] = user_data['login']
                     st.session_state["user_role"] = user_data['role']
                     
-                    cookie_value = json.dumps({'login': user_data['login']})
-                    cookies['auth_token'] = cookie_value
+                    cookies['auth_token'] = json.dumps({'login': user_data['login']})
                     cookies.save()
                     
                     log_action(user_data['login'], 'LOGIN', 'Ручной вход')
-                    time.sleep(1)
+                    time.sleep(0.5)
                     st.rerun()
                 else:
-                    st.error("Неверный пароль")
-            else:
-                st.error("Пользователь не найден")
+                    st.error("Неверный логин или пароль")
     return False
 
-# --- 4. ЗАПУСК ПРИЛОЖЕНИЯ ---
+# --- 3. ГЛАВНЫЙ ЦИКЛ ПРИЛОЖЕНИЯ ---
 if check_login():
+    # Проверка готовности менеджера кук после авторизации
     if not cookies.ready():
         st.stop()
         
     with st.sidebar:
-        st.success(f"Вы вошли как: **{st.session_state.get('user_login')}**")
-        st.info(f"Ваша роль: **{st.session_state.get('user_role')}**")
+        st.success(f"Логин: **{st.session_state.get('user_login')}**")
+        st.info(f"Роль: **{st.session_state.get('user_role')}**")
         
         if st.button("Выйти из системы"):
             st.session_state.clear()
             st.query_params.clear()
-            # Очистка кук через JS (надежно для всех браузеров)
+            # Полная очистка кук
             js_logout = """
                 <script>
                     document.cookie.split(";").forEach(function(c) { 
@@ -157,19 +147,19 @@ if check_login():
             st.components.v1.html(js_logout)
             st.stop()
     
-    # Роутер заявок
-    if 'selected_request_id' not in st.session_state:
-        st.session_state.selected_request_id = None
+    # --- РОУТЕР (Управление отображением) ---
+    # Получаем актуальный ID из URL
+    url_params = st.query_params
+    url_id = url_params.get("id")
 
-    if "id" in st.query_params:
-        url_id = st.query_params["id"]
-        if url_id.isdigit():
-            st.session_state.selected_request_id = int(url_id)
-
-    if st.session_state.selected_request_id is None:
-        if "id" in st.query_params:
-            del st.query_params["id"]
-        render_main_view()
+    if url_id and url_id.isdigit():
+        # Режим просмотра конкретной заявки
+        current_id = int(url_id)
+        st.session_state.selected_request_id = current_id # Синхронизируем стейт
+        render_detail_view(current_id)
     else:
-        st.query_params["id"] = st.session_state.selected_request_id
-        render_detail_view(st.session_state.selected_request_id)
+        # Главная страница (список заявок)
+        st.session_state.selected_request_id = None
+        render_main_view()
+
+# Конец файла
