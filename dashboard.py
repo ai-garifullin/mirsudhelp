@@ -14,40 +14,6 @@ load_dotenv()
 # --- 2. НАСТРОЙКИ ---
 st.set_page_config(page_title="Service Desk Mirsud", layout="wide")
 
-# --- МЕТА-ТЕГИ И МАНИФЕСТ ДЛЯ ГАРАНТИРОВАННОГО PWA ---
-manifest_json = json.dumps({
-    "short_name": "Mirsud SD",
-    "name": "Service Desk Mirsud",
-    "icons": [
-        {
-            "src": "https://cdn-icons-png.flaticon.com/512/5607/5607325.png",
-            "sizes": "512x512",
-            "type": "image/png"
-        }
-    ],
-    "start_url": ".",
-    "display": "standalone", # Именно это убирает адресную строку
-    "theme_color": "#000000",
-    "background_color": "#ffffff"
-})
-
-# Кодируем манифест в Base64, чтобы вставить прямо в HTML
-import base64
-manifest_base64 = base64.b64encode(manifest_json.encode()).decode()
-
-st.markdown(f"""
-    <head>
-        <link rel="manifest" href="data:application/json;base64,{manifest_base64}">
-        
-        <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-        <meta name="apple-mobile-web-app-title" content="Mirsud SD">
-        <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5607/5607325.png">
-        
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    </head>
-""", unsafe_allow_html=True)
-
 # Инициализация менеджера Cookies
 # Пароль может быть любой секретной строкой, он нужен для шифрования
 cookie_password=os.getenv('cookie_encryption_key')
