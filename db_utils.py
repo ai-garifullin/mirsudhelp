@@ -248,3 +248,62 @@ def log_action(login, action, details):
         # В реальном приложении здесь лучше писать в отдельный файл логов,
         # чтобы не зациклиться, если сама база упала.
         print(f"!!! ОШИБКА ЛОГИРОВАНИЯ: {e}")
+
+def duplicate_request(old_id):
+    """
+    Создает полную копию заявки с новой датой и пустой служебной информацией.
+    Копирует всю переписку (сообщения).
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+    
+    cursor = conn.cursor()
+    try:
+        # 1. Создаем новую запись в таблице request на основе старой
+        # Поля Result, Time_Spent обнуляем, Status ставим '🔴 Новая', Closed_At в NULL
+        sql_insert_request = """
+            INSERT INTO request (
+                Date_Received, Status, Service_Type, Description, 
+                Result, Time_Spent, Closed_At, User_ID, 
+                Court_Section_ID, Request_Type_ID, Assigned_Executor_ID
+            )
+            SELECT 
+                NOW(), '🔴 Новая', Service_Type, Description, 
+                '', 0, NULL, User_ID, 
+                Court_Section_ID, Request_Type_ID, Assigned_Executor_ID
+            FROM request 
+            WHERE Request_ID = %s
+        """
+        cursor.execute(sql_insert_request, (int(old_id),))
+        
+        # Получаем ID только что созданной заявки (специфика MySQL)
+        new_id = cursor.lastrowid
+
+        # 2. Копируем всю переписку (чат) из request_message
+        sql_copy_messages = """
+            INSERT INTO request_message (
+                Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path
+            )
+            SELECT 
+                %s, Sender_Type, Author, Message_Text, Created_At, Attachment_Path
+            FROM request_message 
+            WHERE Request_ID = %s
+        """
+        cursor.execute(sql_copy_messages, (new_id, int(old_id)))
+
+        # 3. Важно: Мы НЕ копируем данные из departure_record (ГСМ), 
+        # так как по условию служебная информация должна быть пустой.
+        # Новая запись в departure_record создастся автоматически вашей функцией update_fuel_record,
+        # когда пользователь впервые нажмет "Сохранить" в новой заявке.
+
+        conn.commit()
+        return new_id
+
+    except Exception as e:
+        print(f"Ошибка при дублировании заявки: {e}")
+        conn.rollback()
+        return None
+    finally:
+        cursor.close()
+        conn.close()

@@ -380,4 +380,22 @@ def render_detail_view(request_id):
                 time.sleep(1)
                 st.rerun()
 
+        st.write("---")
+        if st.button("👥 Создать дубликат заявки", use_container_width=True):
+            new_request_id = duplicate_request(request_id)
+            if new_request_id:
+                # Логируем действие
+                log_action(current_user, "DUPLICATE", f"Создан дубликат #{new_request_id} на основе #{request_id}")
+                
+                st.toast(f"✅ Создана новая заявка №{new_request_id}")
+                
+                # Переключаем интерфейс на новую заявку
+                st.session_state.selected_request_id = new_request_id
+                st.query_params["id"] = str(new_request_id)
+                
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Не удалось создать дубликат. Проверьте логи сервера.")  
+
 

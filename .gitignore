@@ -6,3 +6,4 @@ mysql_data
 .env
 init.sql
 init_old.sql
+logs
