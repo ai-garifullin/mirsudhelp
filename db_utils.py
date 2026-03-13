@@ -303,3 +303,44 @@ def duplicate_request(old_id):
     finally:
         cursor.close()
         conn.close()
+
+def get_user_tg_id(user_name):
+    """Ищет telegram_id по полному имени пользователя в executor"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        query = "SELECT telegram_id FROM executor WHERE Full_Name = %s"
+        cursor.execute(query, (user_name,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        # В mysql-connector result — это кортеж, поэтому result[0] верно
+        return result[0] if result else None
+    except Exception as e:
+        return None
+    
+def get_director_tg_id():
+    """Находит телеграм ID директора по его имени в базе"""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Используем %s для безопасности (в стиле MySQL)
+        query = "SELECT telegram_id FROM executor WHERE Full_Name = %s LIMIT 1"
+        cursor.execute(query, ('Фоминов (Кзн)',))
+        
+        result = cursor.fetchone()
+        
+        # Если result есть, возвращаем первый элемент, иначе None
+        return result[0] if result else None
+        
+    except Exception as e:
+        print(f"Ошибка при поиске ID директора: {e}")
+        return None
+        
+    finally:
+        if conn:
+            conn.close()

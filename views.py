@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from db_utils import * # Убедитесь, что все нужные функции есть в db_utils.py
 from email_monitor import send_email
+from not_bot import *
 import time
 
 
@@ -265,48 +266,43 @@ def render_detail_view(request_id):
     # =================================================
     with right_col:
         st.subheader("⚙️ Управление заявкой")
-        
-        if 'extra_fields' not in st.session_state:
-            st.session_state.extra_fields = 0
 
-        
+        # 1. Подготовка данных
         service_opts = ["Удаленно", "Выезд", "Дубль"]
-        current_service = data.get('Service_Type', 'Удаленно')
-        
+        status_opts = ["🔴 Новая", "⚙️ В работе", "✅ Выполнена"]
         executors_map = get_lookup_options("executor", "Executor_ID", "Full_Name")
         exec_list = [""] + list(executors_map.keys())
         types_map = get_lookup_options("request_type", "Type_ID", "Type_Name")
         types_list = list(types_map.keys())
 
-        status_opts = ["🔴 Новая", "⚙️ В работе", "✅ Выполнена"]
-        current_status_val = data.get('Status', '🔴 Новая')
-        if "Новая" in str(current_status_val): current_status_val = '🔴 Новая'
-        elif "В работе" in str(current_status_val): current_status_val = '⚙️ В работе'
-        elif "Выполнена" in str(current_status_val): current_status_val = '✅ Выполнена'
-        current_status_idx = status_opts.index(current_status_val) if current_status_val in status_opts else 0
-        
-        current_executor_idx = exec_list.index(data['Executor_Name']) if data.get('Executor_Name') in exec_list else 0
-        current_type_idx = types_list.index(data['Type_Name']) if data.get('Type_Name') in types_list else 0
-        service_idx = service_opts.index(current_service) if current_service in service_opts else 0
-        
-        col1, col2 = st.columns([1,1])
+        def get_idx(lst, val):
+            return lst.index(val) if val in lst else 0
+
+        # 2. Отрисовка
+        col1, col2 = st.columns([1, 1])
+
         with col1:
-            status = st.selectbox("Статус:", status_opts, index=current_status_idx, disabled=is_disabled)
-            executor = st.selectbox("Исполнитель:", exec_list, index=current_executor_idx, disabled=is_disabled)
+            # Статус и Исполнитель
+            status = st.selectbox("Статус:", status_opts, index=get_idx(status_opts, data.get('Status')), key="st_status", disabled=is_disabled)
+            executor = st.selectbox("Исполнитель:", exec_list, index=get_idx(exec_list, data.get('Executor_Name')), key="st_exec", disabled=is_disabled)
+            
+           
+
         with col2:
+            # Информация о заявителе
             st.markdown(f"""
-            **Заявитель:** {data.get('User_Name', 'Не указан')}<br>
-            **Район:** {data.get('District_Name', 'Не указан')}, {data.get('Section_Number', 'Не указан')}<br>
-            **Раб.тел.:** {data.get('Landline_Phone', 'Не указан')}<br>
-            **Закрыта:** {data.get('Closed_At', 'Не указан')}
-            """, unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([2,1])
+                **Заявитель:** {data.get('User_Name', 'Не указан')}<br>
+                **Район:** {data.get('District_Name', 'Не указан')}, {data.get('Section_Number', 'Не указан')}<br>
+                **Раб.тел.:** {data.get('Landline_Phone', 'Не указан')}<br>
+                **Закрыта:** {data.get('Closed_At', 'Не указан')}
+                """, unsafe_allow_html=True)
+        col1, col2 = st.columns([1, 1])
         with col1:
-            req_type = st.selectbox("Тип:", types_list, index=current_type_idx, disabled=is_disabled)
+            req_type = st.selectbox("Тип:", types_list, index=get_idx(types_list, data.get('Type_Name')), key="st_type", disabled=is_disabled)
+
         with col2:
-            service_type = st.selectbox("Вид работ:", service_opts, index=service_idx, disabled=is_disabled)
-        
+            service_type = st.selectbox("Вид работ:", service_opts, index=get_idx(service_opts, data.get('Service_Type')), key="st_service", disabled=is_disabled)
+            
         # 1. Инициализация состояния, чтобы поля были пустыми при открытии, 
         # но сохраняли данные, пока вы их вводите
         if 'new_res' not in st.session_state: st.session_state.new_res = ""
@@ -332,24 +328,47 @@ def render_detail_view(request_id):
             st.session_state.new_time = st.number_input("Затрачено минут:", value=st.session_state.new_time, step=5)
              # 4. Кнопка сохранения
             if st.button("💾 Сохранить", type="primary", use_container_width=True):
-    
-                # 1. СТАТУС, ИСПОЛНИТЕЛЬ, ТИПЫ — оставляем вашу логику сравнения без изменений
-                if str(status) != str(data.get('Status', '')):
-                    update_db_field(request_id, "Status", status)
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Статус изменен на '{status}'")
-                    update_closed_date(request_id, status == '✅ Выполнена')
+                # Берем значения из session_state, так как они теперь привязаны к ключам
+                new_status = st.session_state.st_status
+                new_executor = st.session_state.st_exec
+                new_type = st.session_state.st_type
+                new_service = st.session_state.st_service
 
-                if str(executor) != str(data.get('Executor_Name', '')):
-                    update_db_field(request_id, "Assigned_Executor_ID", executors_map.get(executor))
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Исполнитель изменен на '{executor}'")
+                # 1. СТАТУС
+                if str(new_status) != str(data.get('Status', '')):
+                    update_db_field(request_id, "Status", new_status)
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Статус изменен на '{new_status}'")
+                    update_closed_date(request_id, new_status == '✅ Выполнена')
+                    
+                    # Уведомление директору
+                    if new_status == '⚙️ В работе':
+                        director_tg_id = get_director_tg_id()
+                        if director_tg_id:
+                            msg = format_request_message(data, f"🛠 Заявка #{request_id} взята в работу!")
+                            msg += f"\n\n👤 <b>Исполнитель:</b> {new_executor}"
+                            bot.send_message(director_tg_id, msg, parse_mode="HTML")
 
-                if str(req_type) != str(data.get('Type_Name', '')):
-                    update_db_field(request_id, "Request_Type_ID", types_map.get(req_type))
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Тип изменен на '{req_type}'")
+                # 2. ИСПОЛНИТЕЛЬ
+                if str(new_executor) != str(data.get('Executor_Name', '')):
+                    update_db_field(request_id, "Assigned_Executor_ID", executors_map.get(new_executor))
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Исполнитель изменен на '{new_executor}'")
+                    
+                    # Уведомление исполнителю
+                    msg = format_request_message(data, "🔔 Вам назначена новая заявка!")
+                    send_tg_notification(new_executor, msg)
+                                
+                # 3. ТИП
+                if str(new_type) != str(data.get('Type_Name', '')):
+                    update_db_field(request_id, "Request_Type_ID", types_map.get(new_type))
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Тип изменен на '{new_type}'")
 
-                if str(service_type) != str(data.get('Service_Type', '')):
-                    update_db_field(request_id, "Service_Type", service_type)
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Вид работ изменен на '{service_type}'")
+                # 4. ВИД РАБОТ
+                if str(new_service) != str(data.get('Service_Type', '')):
+                    update_db_field(request_id, "Service_Type", new_service)
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Вид работ изменен на '{new_service}'")
+
+                st.success("Изменения сохранены!")
+                st.rerun() # Обновляем страницу, чтобы данные обновились из БД
 
                 # 2. ЛОГИКА ДОБАВЛЕНИЯ РЕЗУЛЬТАТОВ (Авто-счетчик)
                 if st.session_state.new_res.strip() or st.session_state.new_time > 0 or st.session_state.new_mile > 0:
