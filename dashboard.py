@@ -161,5 +161,3 @@ if check_login():
         # Главная страница (список заявок)
         st.session_state.selected_request_id = None
         render_main_view()
-
-# Конец файла

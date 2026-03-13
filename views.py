@@ -266,136 +266,147 @@ def render_detail_view(request_id):
     with right_col:
         st.subheader("⚙️ Управление заявкой")
         
-        with st.form("detail_form"):
-            # Редактируемые поля
-            service_opts = ["Удаленно", "Выезд", "Дубль"]
-            current_service = data.get('Service_Type', 'Удаленно')
+        if 'extra_fields' not in st.session_state:
+            st.session_state.extra_fields = 0
+
+        
+        service_opts = ["Удаленно", "Выезд", "Дубль"]
+        current_service = data.get('Service_Type', 'Удаленно')
+        
+        executors_map = get_lookup_options("executor", "Executor_ID", "Full_Name")
+        exec_list = [""] + list(executors_map.keys())
+        types_map = get_lookup_options("request_type", "Type_ID", "Type_Name")
+        types_list = list(types_map.keys())
+
+        status_opts = ["🔴 Новая", "⚙️ В работе", "✅ Выполнена"]
+        current_status_val = data.get('Status', '🔴 Новая')
+        if "Новая" in str(current_status_val): current_status_val = '🔴 Новая'
+        elif "В работе" in str(current_status_val): current_status_val = '⚙️ В работе'
+        elif "Выполнена" in str(current_status_val): current_status_val = '✅ Выполнена'
+        current_status_idx = status_opts.index(current_status_val) if current_status_val in status_opts else 0
+        
+        current_executor_idx = exec_list.index(data['Executor_Name']) if data.get('Executor_Name') in exec_list else 0
+        current_type_idx = types_list.index(data['Type_Name']) if data.get('Type_Name') in types_list else 0
+        service_idx = service_opts.index(current_service) if current_service in service_opts else 0
+        
+        col1, col2 = st.columns([1,1])
+        with col1:
+            status = st.selectbox("Статус:", status_opts, index=current_status_idx, disabled=is_disabled)
+            executor = st.selectbox("Исполнитель:", exec_list, index=current_executor_idx, disabled=is_disabled)
+        with col2:
+            st.markdown(f"""
+            **Заявитель:** {data.get('User_Name', 'Не указан')}<br>
+            **Район:** {data.get('District_Name', 'Не указан')}, {data.get('Section_Number', 'Не указан')}<br>
+            **Раб.тел.:** {data.get('Landline_Phone', 'Не указан')}<br>
+            **Закрыта:** {data.get('Closed_At', 'Не указан')}
+            """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([2,1])
+        with col1:
+            req_type = st.selectbox("Тип:", types_list, index=current_type_idx, disabled=is_disabled)
+        with col2:
+            service_type = st.selectbox("Вид работ:", service_opts, index=service_idx, disabled=is_disabled)
+        
+        # 1. Инициализация состояния, чтобы поля были пустыми при открытии, 
+        # но сохраняли данные, пока вы их вводите
+        if 'new_res' not in st.session_state: st.session_state.new_res = ""
+        if 'new_time' not in st.session_state: st.session_state.new_time = 0
+        if 'new_mile' not in st.session_state: st.session_state.new_mile = 0.0
+
+        # 2. Неизменяемые поля (Итоги)
+        st.markdown("### Итоговые показатели")
+        st.text_area("Общий результат (История):", value=data.get('Result', '') or '', disabled=True, height=218)
+        col_i1, col_i2 = st.columns(2)
+        with col_i1:
+            st.number_input("Общее время (из БД):", value=int(data.get('Time_Spent', 0) or 0), disabled=True)
+        with col_i2:
+            st.number_input("Общий пробег (из БД):", value=float(data.get('Mileage', 0.0) or 0.0), disabled=True)
+
+        st.write("---")
+
+        # 3. Поля ввода (БЕЗ ФОРМЫ - никакой надписи не будет!)
+        st.markdown("### Добавить данные")
+        st.session_state.new_res = st.text_area("Результат:", value=st.session_state.new_res)
+        col_n1, col_n2 = st.columns([5,5])
+        with col_n1:
+            st.session_state.new_time = st.number_input("Затрачено минут:", value=st.session_state.new_time, step=5)
+             # 4. Кнопка сохранения
+            if st.button("💾 Сохранить", type="primary", use_container_width=True):
     
-            executors_map = get_lookup_options("executor", "Executor_ID", "Full_Name")
-            exec_list = [""] + list(executors_map.keys())
-            types_map = get_lookup_options("request_type", "Type_ID", "Type_Name")
-            types_list = list(types_map.keys())
-
-            status_opts = ["🔴 Новая", "⚙️ В работе", "✅ Выполнена"]
-            current_status_val = data.get('Status', '🔴 Новая')
-            if "Новая" in str(current_status_val): current_status_val = '🔴 Новая'
-            elif "В работе" in str(current_status_val): current_status_val = '⚙️ В работе'
-            elif "Выполнена" in str(current_status_val): current_status_val = '✅ Выполнена'
-            current_status_idx = status_opts.index(current_status_val) if current_status_val in status_opts else 0
-            
-            current_executor_idx = exec_list.index(data['Executor_Name']) if data.get('Executor_Name') in exec_list else 0
-            current_type_idx = types_list.index(data['Type_Name']) if data.get('Type_Name') in types_list else 0
-            service_idx = service_opts.index(current_service) if current_service in service_opts else 0
-            
-            col1, col2 = st.columns([1,1])
-            with col1:
-                status = st.selectbox("Статус:", status_opts, index=current_status_idx, disabled=is_disabled)
-                executor = st.selectbox("Исполнитель:", exec_list, index=current_executor_idx, disabled=is_disabled)
-            with col2:
-                st.markdown(f"""
-                **Заявитель:** {data.get('User_Name', 'Не указан')}<br>
-                **Район:** {data.get('District_Name', 'Не указан')}, {data.get('Section_Number', 'Не указан')}<br>
-                **Раб.тел.:** {data.get('Landline_Phone', 'Не указан')}<br>
-                **Закрыта:** {data.get('Closed_At', 'Не указан')}
-                """, unsafe_allow_html=True)
-            
-            col1, col2 = st.columns([2,1])
-            with col1:
-                req_type = st.selectbox("Тип:", types_list, index=current_type_idx, disabled=is_disabled)
-            with col2:
-                service_type = st.selectbox("Вид работ:", service_opts, index=service_idx, disabled=is_disabled)
-            result = st.text_area("Результат выполнения:", value=data.get('Result', ''), height=100, disabled=is_disabled)
-            
-            st.write("---")
-            st.markdown("**Служебная информация**")
-            
-            time_spent = st.number_input("Затрачено минут:", value=int(data.get('Time_Spent', 0) or 0), step=5, disabled=is_disabled)
-            mileage = st.number_input("Пробег (км):", value=float(data.get('Mileage', 0.0) or 0.0), step=1.0, disabled=is_disabled)
-            fuel_cons = st.number_input("Расход (л/100км):", value=float(data.get('Fuel_Consumption', 0.0) or 0.0), step=0.1, disabled=is_disabled)
-            fuel_price = st.number_input("Цена бензина (руб):", value=float(data.get('Fuel_Price', 0.0) or 0.0), step=0.1, disabled=is_disabled)
-            
-            submit_button_card = st.form_submit_button("💾 Сохранить", type="primary", disabled=is_disabled)
-
-            if submit_button_card:
-                
-                
-                # 1. СТАТУС
-                # Сравниваем новое значение (status) со старым из базы (data['Status'])
-                # Используем "мягкое" сравнение (str), чтобы избежать ошибок типов
+                # 1. СТАТУС, ИСПОЛНИТЕЛЬ, ТИПЫ — оставляем вашу логику сравнения без изменений
                 if str(status) != str(data.get('Status', '')):
                     update_db_field(request_id, "Status", status)
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Статус изменен на '{status}'")
-                    
-                    # Логика даты закрытия
-                    if status == '✅ Выполнена': 
-                        update_closed_date(request_id, True)
-                    else: 
-                        update_closed_date(request_id, False)
+                    update_closed_date(request_id, status == '✅ Выполнена')
 
-                # 2. ИСПОЛНИТЕЛЬ
                 if str(executor) != str(data.get('Executor_Name', '')):
-                    new_id = executors_map.get(executor)
-                    update_db_field(request_id, "Assigned_Executor_ID", new_id)
+                    update_db_field(request_id, "Assigned_Executor_ID", executors_map.get(executor))
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Исполнитель изменен на '{executor}'")
 
-                # 3. ТИП ЗАЯВКИ
                 if str(req_type) != str(data.get('Type_Name', '')):
-                    new_type_id = types_map.get(req_type)
-                    update_db_field(request_id, "Request_Type_ID", new_type_id)
+                    update_db_field(request_id, "Request_Type_ID", types_map.get(req_type))
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Тип изменен на '{req_type}'")
-                # 3.1 ВИД РАБОТ
+
                 if str(service_type) != str(data.get('Service_Type', '')):
-            
                     update_db_field(request_id, "Service_Type", service_type)
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Вид работ изменен на '{service_type}'")
 
-                # 4. РЕЗУЛЬТАТ
-                if str(result) != str(data.get('Result', '')):
-                    update_db_field(request_id, "Result", result)
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Обновлен результат работы")
+                # 2. ЛОГИКА ДОБАВЛЕНИЯ РЕЗУЛЬТАТОВ (Авто-счетчик)
+                if st.session_state.new_res.strip() or st.session_state.new_time > 0 or st.session_state.new_mile > 0:
+                    
+                    old_result = data.get('Result') or ''
+                    
+                    # Считаем, сколько раз встречается "[Результат", чтобы понять номер следующего
+                    # count будет равен 1, если ничего не найдено, или номеру последнего + 1
+                    count = old_result.count("[Результат") + 1
+                    
+                    import datetime
+                    timestamp = datetime.datetime.now().strftime("%d.%m %H:%M")
+                    
+                    # Форматируем добавление компактно
+                    addition = (f"\n\n--- [Результат {count} | {timestamp}] ---\n"
+                                f"📝 {st.session_state.new_res.strip()}\n"
+                                f"⏱ Время: {st.session_state.new_time} мин. | 🛣 Пробег: {st.session_state.new_mile} км.")
+                    
+                    full_result = (old_result + addition).strip()
 
-                # 5. ВРЕМЯ
-                # Приводим к int для корректного сравнения (0 вместо None)
-                old_time = int(data.get('Time_Spent') or 0)
-                if int(time_spent) != old_time:
-                    update_db_field(request_id, "Time_Spent", time_spent)
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Время изменено с {old_time} на {time_spent} мин.")
+                    # Агрегация сумм
+                    total_time = int(data.get('Time_Spent') or 0) + st.session_state.new_time
+                    total_mileage = float(data.get('Mileage') or 0.0) + st.session_state.new_mile
+                    
+                    # Обновление БД
+                    update_db_field(request_id, "Result", full_result)
+                    update_db_field(request_id, "Time_Spent", total_time)
+                    update_fuel_record(request_id, "Mileage", total_mileage)
+                    
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Добавлен результат #{count}")
+                    
+                    # Сброс временных полей
+                    st.session_state.new_res = ""
+                    st.session_state.new_time = 0
+                    st.session_state.new_mile = 0.0
+                    
+                    st.toast(f"✅ Результат {count} добавлен!")
+                    time.sleep(0.5)
+                    st.rerun()
 
-                # 6. ГСМ (Пробег, Расход, Цена)
-                old_mileage = float(data.get('Mileage') or 0.0)
-                if float(mileage) != old_mileage:
-                    update_fuel_record(request_id, "Mileage", mileage)
-                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Пробег изменен на {mileage} км")
-
-                old_fuel = float(data.get('Fuel_Consumption') or 0.0)
-                if float(fuel_cons) != old_fuel:
-                    update_fuel_record(request_id, "Fuel_Consumption", fuel_cons)
-                    # Расход меняется редко, можно не спамить в лог, или логировать по желанию
-
-                old_price = float(data.get('Fuel_Price') or 0.0)
-                if float(fuel_price) != old_price:
-                    update_fuel_record(request_id, "Fuel_Price", fuel_price)
-
-                st.toast("✅ Заявка обновлена!")
-                time.sleep(1)
-                st.rerun()
-
-        st.write("---")
-        if st.button("👥 Создать дубликат заявки", use_container_width=True):
-            new_request_id = duplicate_request(request_id)
-            if new_request_id:
-                # Логируем действие
-                log_action(current_user, "DUPLICATE", f"Создан дубликат #{new_request_id} на основе #{request_id}")
-                
-                st.toast(f"✅ Создана новая заявка №{new_request_id}")
-                
-                # Переключаем интерфейс на новую заявку
-                st.session_state.selected_request_id = new_request_id
-                st.query_params["id"] = str(new_request_id)
-                
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error("Не удалось создать дубликат. Проверьте логи сервера.")  
+        with col_n2:
+            st.session_state.new_mile = st.number_input("Пробег (км):", value=st.session_state.new_mile, step=1.0)
+            if st.button("👥 Создать дубликат", use_container_width=True):
+                new_request_id = duplicate_request(request_id)
+                if new_request_id:
+                    # Логируем действие
+                    log_action(current_user, "DUPLICATE", f"Создан дубликат #{new_request_id} на основе #{request_id}")
+                    
+                    st.toast(f"✅ Создана новая заявка №{new_request_id}")
+                    
+                    # Переключаем интерфейс на новую заявку
+                    st.session_state.selected_request_id = new_request_id
+                    st.query_params["id"] = str(new_request_id)
+                    
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Не удалось создать дубликат. Проверьте логи сервера.")  
 
 
