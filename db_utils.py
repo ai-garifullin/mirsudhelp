@@ -330,7 +330,7 @@ def get_director_tg_id():
         
         # Используем %s для безопасности (в стиле MySQL)
         query = "SELECT telegram_id FROM executor WHERE Full_Name = %s LIMIT 1"
-        cursor.execute(query, ('Фоминов (Кзн)',))
+        cursor.execute(query, ('Фомин (Кзн)',))
         
         result = cursor.fetchone()
         
