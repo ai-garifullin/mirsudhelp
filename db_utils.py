@@ -321,7 +321,7 @@ def get_user_tg_id(user_name):
     except Exception as e:
         return None
     
-def get_directors_tg_id():
+def get_director_tg_id():
     conn = None
     try:
         conn = get_db_connection()
