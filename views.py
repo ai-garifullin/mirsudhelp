@@ -380,9 +380,6 @@ def render_detail_view(request_id):
                     update_fuel_record(request_id, "Fuel_Price", fuel_price)
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Цена бензина изменена на '{fuel_price}'")
 
-                st.success("Изменения сохранены!")
-                st.rerun() # Обновляем страницу, чтобы данные обновились из БД
-
                 # 2. ЛОГИКА ДОБАВЛЕНИЯ РЕЗУЛЬТАТОВ (Авто-счетчик)
                 if st.session_state.new_res.strip() or st.session_state.new_time > 0 or st.session_state.new_mile > 0:
                     
