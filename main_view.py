@@ -9,44 +9,38 @@ def render_main_view():
    
     st.markdown("""
         <style>
-        /* 1. Общие отступы страницы */
+        /* Общие стили */
         .block-container { padding-top: 2rem !important; }
         h1 { padding-top: 0px !important; margin-top: 0px !important; margin-bottom: 0.5rem !important; }
         [data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
         
-        /* 2. Высота кнопок */
         .stButton > button, .stDownloadButton > button, .stLinkButton > a {
             height: 38px !important;
             display: flex !important;
             align-items: center !important;
+            justify-content: center !important;
+            width: 100% !important;
         }
 
-        /* 3. МОБИЛЬНАЯ ВЕРСТКА */
+        /* Мобильная верстка */
         @media (max-width: 640px) {
-            /* Принудительная сетка для фильтров */
+            /* Фильтры в сетку */
             .mobile-flex [data-testid="stHorizontalBlock"] {
                 display: grid !important;
                 grid-template-columns: repeat(4, 1fr) !important;
                 gap: 5px !important;
             }
-            /* Адрес и Исполнитель - на всю ширину (занимают 4 ячейки из 4) */
             .mobile-flex [data-testid="column"]:nth-child(1),
-            .mobile-flex [data-testid="column"]:nth-child(2) {
-                grid-column: span 4 !important;
-            }
-            /* Вид работ и Статус - в одну строку (занимают по 2 ячейки из 4) */
+            .mobile-flex [data-testid="column"]:nth-child(2) { grid-column: span 4 !important; }
             .mobile-flex [data-testid="column"]:nth-child(3),
-            .mobile-flex [data-testid="column"]:nth-child(4) {
-                grid-column: span 2 !important;
-            }
+            .mobile-flex [data-testid="column"]:nth-child(4) { grid-column: span 2 !important; }
 
-            /* Кнопки в одну строку */
+            /* Кнопки в сетку */
             .button-row [data-testid="stHorizontalBlock"] {
                 display: grid !important;
                 grid-template-columns: 1fr 2fr 1fr 1fr !important;
                 gap: 5px !important;
             }
-            /* Скрываем ненужный spacer */
             .button-row [data-testid="column"]:nth-child(5) { display: none !important; }
         }
         </style>
