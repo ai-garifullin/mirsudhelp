@@ -69,7 +69,10 @@ services:
     restart: always
     ports:
       - "8503:8503"
-    
+    networks:
+      - mynet
+    volumes:
+      - ./attachments:/app/attachments
     command: streamlit run salary.py --server.port=8503 --server.address=0.0.0.0
 
   # 4. Боты (Telegram + Email)
