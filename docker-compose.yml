@@ -70,8 +70,8 @@ services:
     ports:
       - "8503:8503"
     
-    command: streamlit run form_app.py --server.port=8503 --server.address=0.0.0.0
-    
+    command: streamlit run salary.py --server.port=8503 --server.address=0.0.0.0
+
   # 4. Боты (Telegram + Email)
   bot:
     build: .
