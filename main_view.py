@@ -9,60 +9,45 @@ def render_main_view():
    
     st.markdown("""
         <style>
-        /* 1. Убираем лишние отступы у контейнера страницы */
-        .block-container {
-            padding-top: 2rem !important; /* Умеренный отступ сверху */
-            padding-bottom: 0rem !important;
-        }
-
-        /* 2. Обнуляем отступы заголовка (без отрицательных значений) */
-        h1 {
-            padding-top: 0px !important;
-            margin-top: 0px !important;
-            margin-bottom: 1rem !important;
-        }
-
-        /* 3. Компактное расстояние между строками виджетов */
-        [data-testid="stVerticalBlock"] {
-            gap: 0.5rem !important;
-        }
+        /* 1. Общие отступы страницы */
+        .block-container { padding-top: 2rem !important; }
+        h1 { padding-top: 0px !important; margin-top: 0px !important; margin-bottom: 0.5rem !important; }
+        [data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
         
-        /* 4. Центрирование и высота кнопок */
+        /* 2. Высота кнопок */
         .stButton > button, .stDownloadButton > button, .stLinkButton > a {
             height: 38px !important;
             display: flex !important;
             align-items: center !important;
         }
 
-        /* 5. Мобильная адаптация (Вид работ и Статус в одну строку) */
+        /* 3. МОБИЛЬНАЯ ВЕРСТКА */
         @media (max-width: 640px) {
-            .mobile-row [data-testid="stHorizontalBlock"] {
-                flex-direction: row !important;
-                flex-wrap: wrap !important;
-            }
-            .mobile-row [data-testid="column"]:nth-child(1),
-            .mobile-row [data-testid="column"]:nth-child(2) {
-                flex: 1 1 100% !important;
-            }
-            .mobile-row [data-testid="column"]:nth-child(3),
-            .mobile-row [data-testid="column"]:nth-child(4) {
-                flex: 1 1 48% !important;
-            }
-
-            /* Кнопки Excel, ID и Открыть в одну строку */
-            .button-row [data-testid="stHorizontalBlock"] {
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                align-items: flex-end !important;
+            /* Принудительная сетка для фильтров */
+            .mobile-flex [data-testid="stHorizontalBlock"] {
+                display: grid !important;
+                grid-template-columns: repeat(4, 1fr) !important;
                 gap: 5px !important;
             }
-            .button-row [data-testid="column"] {
-                flex: 1 1 auto !important;
-                min-width: 0 !important;
+            /* Адрес и Исполнитель - на всю ширину (занимают 4 ячейки из 4) */
+            .mobile-flex [data-testid="column"]:nth-child(1),
+            .mobile-flex [data-testid="column"]:nth-child(2) {
+                grid-column: span 4 !important;
             }
-            .button-row [data-testid="column"]:nth-child(5) {
-                display: none !important; /* Скрываем spacer на мобилке */
+            /* Вид работ и Статус - в одну строку (занимают по 2 ячейки из 4) */
+            .mobile-flex [data-testid="column"]:nth-child(3),
+            .mobile-flex [data-testid="column"]:nth-child(4) {
+                grid-column: span 2 !important;
             }
+
+            /* Кнопки в одну строку */
+            .button-row [data-testid="stHorizontalBlock"] {
+                display: grid !important;
+                grid-template-columns: 1fr 2fr 1fr 1fr !important;
+                gap: 5px !important;
+            }
+            /* Скрываем ненужный spacer */
+            .button-row [data-testid="column"]:nth-child(5) { display: none !important; }
         }
         </style>
     """, unsafe_allow_html=True)
@@ -82,7 +67,7 @@ def render_main_view():
         all_addresses = []
 
     # --- БЛОК ФИЛЬТРОВ ---
-    st.markdown('<div class="mobile-row">', unsafe_allow_html=True)
+    st.markdown('<div class="mobile-flex">', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns([2.5, 1.5, 1.5, 1.5])
 
     with col1:
