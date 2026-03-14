@@ -72,7 +72,7 @@ def render_main_view():
     with col2:
         f_exec = st.multiselect("👤 Исполнитель:", options=list(executors_map.keys()), placeholder="Выберите")
     with col3:
-        f_service = st.multiselect("🛠 Вид работ:", options=["Удаленно", "Выезд"], placeholder="Выберите")
+        f_service = st.multiselect("🛠 Вид работ:", options=["Удаленно", "Выезд", "Дубль"], placeholder="Выберите")
     with col4:
         f_status = st.multiselect("Статус:", options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], placeholder="Выберите")
     st.markdown('</div>', unsafe_allow_html=True)
