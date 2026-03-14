@@ -310,18 +310,18 @@ def render_detail_view(request_id):
         if 'new_mile' not in st.session_state: st.session_state.new_mile = 0.0
 
         # 2. Неизменяемые поля (Итоги)
-        st.markdown("### Итоговые показатели")
-        st.text_area("Общий результат (История):", value=data.get('Result', '') or '', disabled=True, height=218)
+        st.markdown("### Итог")
+        st.text_area("Общий результат:", value=data.get('Result', '') or '', disabled=True, height=218)
         col_i1, col_i2 = st.columns(2)
         with col_i1:
-            st.number_input("Общее время (из БД):", value=int(data.get('Time_Spent', 0) or 0), disabled=True)
+            st.number_input("Общее время:", value=int(data.get('Time_Spent', 0) or 0), disabled=True)
         with col_i2:
-            st.number_input("Общий пробег (из БД):", value=float(data.get('Mileage', 0.0) or 0.0), disabled=True)
+            st.number_input("Общий пробег:", value=float(data.get('Mileage', 0.0) or 0.0), disabled=True)
 
         st.write("---")
 
         # 3. Поля ввода (БЕЗ ФОРМЫ - никакой надписи не будет!)
-        st.markdown("### Добавить данные")
+        st.markdown("### Добавить информацию")
         st.session_state.new_res = st.text_area("Результат:", value=st.session_state.new_res)
         col_n1, col_n2 = st.columns([5,5])
         with col_n1:

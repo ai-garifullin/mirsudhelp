@@ -6,12 +6,74 @@ import io
 import pandas as pd
 
 def render_main_view():
+   
+    st.markdown("""
+        <style>
+        /* 1. Убираем лишние отступы у контейнера страницы */
+        .block-container {
+            padding-top: 2rem !important; /* Умеренный отступ сверху */
+            padding-bottom: 0rem !important;
+        }
+
+        /* 2. Обнуляем отступы заголовка (без отрицательных значений) */
+        h1 {
+            padding-top: 0px !important;
+            margin-top: 0px !important;
+            margin-bottom: 1rem !important;
+        }
+
+        /* 3. Компактное расстояние между строками виджетов */
+        [data-testid="stVerticalBlock"] {
+            gap: 0.5rem !important;
+        }
+        
+        /* 4. Центрирование и высота кнопок */
+        .stButton > button, .stDownloadButton > button, .stLinkButton > a {
+            height: 38px !important;
+            display: flex !important;
+            align-items: center !important;
+        }
+
+        /* 5. Мобильная адаптация (Вид работ и Статус в одну строку) */
+        @media (max-width: 640px) {
+            .mobile-row [data-testid="stHorizontalBlock"] {
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+            }
+            .mobile-row [data-testid="column"]:nth-child(1),
+            .mobile-row [data-testid="column"]:nth-child(2) {
+                flex: 1 1 100% !important;
+            }
+            .mobile-row [data-testid="column"]:nth-child(3),
+            .mobile-row [data-testid="column"]:nth-child(4) {
+                flex: 1 1 48% !important;
+            }
+
+            /* Кнопки Excel, ID и Открыть в одну строку */
+            .button-row [data-testid="stHorizontalBlock"] {
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: flex-end !important;
+                gap: 5px !important;
+            }
+            .button-row [data-testid="column"] {
+                flex: 1 1 auto !important;
+                min-width: 0 !important;
+            }
+            .button-row [data-testid="column"]:nth-child(5) {
+                display: none !important; /* Скрываем spacer на мобилке */
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # --- ЗАГОЛОВОК ---
     st.title("Service Desk Mirsud")
-    
-    # 1. ЗАГРУЗКА СПРАВОЧНИКОВ
+
+    # 1. ЗАГРУЗКА СПРАВОЧНИКОВ (логика остается прежней)
     executors_map = get_lookup_options("executor", "Executor_ID", "Full_Name")
     types_map = get_lookup_options("request_type", "Type_ID", "Type_Name")
-    
+
     conn = get_db_connection()
     if conn:
         all_addresses = pd.read_sql("SELECT Address_Name FROM locations ORDER BY Address_Name", conn)['Address_Name'].tolist()
@@ -20,6 +82,7 @@ def render_main_view():
         all_addresses = []
 
     # --- БЛОК ФИЛЬТРОВ ---
+    st.markdown('<div class="mobile-row">', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns([2.5, 1.5, 1.5, 1.5])
 
     with col1:
@@ -30,46 +93,53 @@ def render_main_view():
         f_service = st.multiselect("🛠 Вид работ:", options=["Удаленно", "Выезд"], placeholder="Выберите")
     with col4:
         f_status = st.multiselect("Статус:", options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], placeholder="Выберите")
-    st.divider() 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Уменьшенный разделитель
+    st.markdown("<hr style='margin: 1em 0;'>", unsafe_allow_html=True)
 
     # --- ПОЛУЧЕНИЕ ДАННЫХ ---
     active_filters = {'address': f_addr, 'executor': f_exec, 'service_type': f_service, 'status': f_status}
     data = fetch_main_data(active_filters)
-    
+
     if data.empty:
         st.warning("Заявки не найдены")
-        return
-
-    # ЭКСПОРТ В EXCEL
-    def to_excel(df):
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Sheet1')
-        return output.getvalue()
-
-    # Добавляем параметр gap="small" для минимизации расстояния
-    col_excel, col5, col6, col7, spacer = st.columns([1, 2, 1, 1.2, 9], gap="small")
-
-    with col_excel:
-        st.download_button(
-            label="📥 Excel", # Немного сократил текст для экономии места
-            data=to_excel(data),
-            file_name=f'report_{datetime.now().strftime("%d_%m")}.xlsx',
-            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-
-    with col5:
-        # label_visibility="collapsed" — это правильно, убирает лишнее место сверху
-        quick_id = st.text_input("ID", placeholder="Введите ID", label_visibility="collapsed")
-
-    with col6:
-        if st.button("Открыть") and quick_id:
-            if quick_id.isdigit():
-                st.query_params["id"] = quick_id
-                st.rerun()
-
-    with col7:
         st.link_button("➕ Создать", "https://mirsudhelp.ru", use_container_width=True)
+    else:
+        def to_excel(df):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+            return output.getvalue()
+
+        # --- КНОПКИ (Excel, ID, Открыть, Создать) ---
+        st.markdown('<div class="button-row">', unsafe_allow_html=True)
+        # Используем параметр vertical_alignment для точного выравнивания по нижней линии
+        col_excel, col5, col6, col7, spacer = st.columns([1, 2, 1, 1.2, 9], gap="small", vertical_alignment="bottom")
+
+        with col_excel:
+            st.download_button(
+                label="📥 Excel",
+                data=to_excel(data),
+                file_name=f'report_{datetime.now().strftime("%d_%m")}.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+
+        with col5:
+            quick_id = st.text_input("ID", placeholder="Введите ID", label_visibility="collapsed")
+
+        with col6:
+            if st.button("Открыть", use_container_width=True) and quick_id:
+                if quick_id.isdigit():
+                    st.query_params["id"] = quick_id
+                    st.rerun()
+
+        with col7:
+            st.link_button("➕ Создать", "https://mirsudhelp.ru", use_container_width=True)
+
+        with spacer:
+            st.empty()
+        st.markdown('</div>', unsafe_allow_html=True)
         
 
     # --- ПОДГОТОВКА ТАБЛИЦЫ ---
