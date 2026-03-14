@@ -64,17 +64,35 @@ def render_main_view():
         all_addresses = []
 
     # --- БЛОК ФИЛЬТРОВ ---
+    def update_filters():
+        # Сохраняем значения в параметры URL
+        st.query_params["addr"] = st.session_state.f_addr
+        st.query_params["exec"] = st.session_state.f_exec
+        st.query_params["service"] = st.session_state.f_service
+        st.query_params["status"] = st.session_state.f_status
+        st.markdown('<div class="mobile-flex">', unsafe_allow_html=True)
+
+    params = st.query_params
+
     st.markdown('<div class="mobile-flex">', unsafe_allow_html=True)
     col1, col2, col3, col4 = st.columns([2.5, 1.5, 1.5, 1.5])
 
     with col1:
-        f_addr = st.multiselect("📍 Адрес:", options=all_addresses, placeholder="Выберите адрес")
+        f_addr = st.multiselect("📍 Адрес:", options=all_addresses, 
+                                default=params.get_all("addr"), 
+                                key="f_addr", on_change=update_filters)
     with col2:
-        f_exec = st.multiselect("👤 Исполнитель:", options=list(executors_map.keys()), placeholder="Выберите")
+        f_exec = st.multiselect("👤 Исполнитель:", options=list(executors_map.keys()), 
+                                default=params.get_all("exec"), 
+                                key="f_exec", on_change=update_filters)
     with col3:
-        f_service = st.multiselect("🛠 Вид работ:", options=["Удаленно", "Выезд", "Дубль"], placeholder="Выберите")
+        f_service = st.multiselect("🛠 Вид работ:", options=["Удаленно", "Выезд", "Дубль"], 
+                                default=params.get_all("service"), 
+                                key="f_service", on_change=update_filters)
     with col4:
-        f_status = st.multiselect("Статус:", options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], placeholder="Выберите")
+        f_status = st.multiselect("Статус:", options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], 
+                                default=params.get_all("status"), 
+                                key="f_status", on_change=update_filters)
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Уменьшенный разделитель
