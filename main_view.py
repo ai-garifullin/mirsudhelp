@@ -9,11 +9,14 @@ def render_main_view():
    
     st.markdown("""
         <style>
-        /* Общие стили */
+        /* 1. Общие стили (БЕЗ использования широких селекторов) */
         .block-container { padding-top: 2rem !important; }
         h1 { padding-top: 0px !important; margin-top: 0px !important; margin-bottom: 0.5rem !important; }
-        [data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
         
+        /* Применяем gap только к вертикальным блокам, чтобы не ломать структуру */
+        div.block-container [data-testid="stVerticalBlock"] { gap: 0.4rem !important; }
+        
+        /* Кнопки */
         .stButton > button, .stDownloadButton > button, .stLinkButton > a {
             height: 38px !important;
             display: flex !important;
@@ -22,9 +25,9 @@ def render_main_view():
             width: 100% !important;
         }
 
-        /* Мобильная верстка */
+        /* 2. МОБИЛЬНАЯ ВЕРСТКА (Только внутри наших классов) */
         @media (max-width: 640px) {
-            /* Фильтры в сетку */
+            /* Фильтры: активируются ТОЛЬКО внутри .mobile-flex */
             .mobile-flex [data-testid="stHorizontalBlock"] {
                 display: grid !important;
                 grid-template-columns: repeat(4, 1fr) !important;
@@ -35,7 +38,7 @@ def render_main_view():
             .mobile-flex [data-testid="column"]:nth-child(3),
             .mobile-flex [data-testid="column"]:nth-child(4) { grid-column: span 2 !important; }
 
-            /* Кнопки в сетку */
+            /* Кнопки: активируются ТОЛЬКО внутри .button-row */
             .button-row [data-testid="stHorizontalBlock"] {
                 display: grid !important;
                 grid-template-columns: 1fr 2fr 1fr 1fr !important;
