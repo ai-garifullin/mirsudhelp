@@ -1,6 +1,8 @@
+import threading
 import telebot
 import os
 import dotenv
+import time
 from db_utils import get_user_tg_id
 
 dotenv.load_dotenv()
@@ -36,6 +38,46 @@ def format_request_message(data, title):
         f"📱 <b>Тел:</b> {data.get('Landline_Phone', 'Не указан')}\n\n"
         f"📝 <b>Описание:</b>\n{data.get('Description', 'Нет описания')}"
     )
+
+
+def cleanup_old_attachments(directory="attachments", days_old=30):
+    """
+    Удаляет файлы из указанной директории, которые старше days_old дней.
+    """
+    if not os.path.exists(directory):
+        return
+
+    now = time.time()
+    seconds_in_day = 86400
+    files_deleted = 0
+
+    for filename in os.listdir(directory):
+        file_path = os.path.join(directory, filename)
+        
+        # Проверяем, является ли путь файлом (а не папкой)
+        if os.path.isfile(file_path):
+            # Получаем время последнего изменения файла
+            file_age = os.path.getmtime(file_path)
+            
+            # Если файл старше установленного срока — удаляем
+            if (now - file_age) > (days_old * seconds_in_day):
+                try:
+                    os.remove(file_path)
+                    files_deleted += 1
+                except Exception as e:
+                    print(f"Ошибка при удалении файла {filename}: {e}")
+    
+    if files_deleted > 0:
+        print(f"Очистка: удалено {files_deleted} старых файлов.")
+
+def cleanup_worker():
+    while True:
+        cleanup_old_attachments(days_old=30)
+        # Спим 24 часа (86400 секунд)
+        time.sleep(86400)
+
+# Запуск в потоке при старте бота
+threading.Thread(target=cleanup_worker, daemon=True).start()
 
 if __name__ == '__main__':
     print("Бот запущен...")

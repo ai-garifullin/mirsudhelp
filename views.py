@@ -27,8 +27,43 @@ def render_detail_view(request_id):
 
         st.rerun()
 
-    if data['Status'] == '✅ Выполнена':
+    if data['Status'] == '✅ Выполнена' or data['Status'] == 'Дубль':
         is_disabled = True  # Блокируем поля
+        ##Отправка уведомления пользователю в Telegram о том, что заявка выполнена (если он привязан)
+        conn_tmp = get_db_connection()
+        cur_tmp = conn_tmp.cursor(dictionary=True)
+        # cur_tmp.execute("""
+        #     SELECT u.Chat_ID, u.Email 
+        #     FROM user u
+        #     JOIN request r ON r.User_ID = u.User_ID
+        #     WHERE r.Request_ID = %s
+        # """, (request_id,))
+        #user_info = cur_tmp.fetchone()
+        conn_tmp.close()
+        
+        message_body = f"✅ Ваша заявка №{request_id} выполнена и закрыта. Спасибо за обращение!"
+
+        # 2. Попытка отправки в Telegram
+        # if user_info and user_info.get('Chat_ID'):
+        #     try:
+        #         bot.send_message(user_info['Chat_ID'], message_body)
+        #         add_request_message(conn, request_id, 'Internal', "Система: Уведомление о закрытии отправлено в ТГ", "System")
+        #     except Exception as e:
+        #         print(f"Ошибка ТГ: {e}")
+        
+        # 3. Попытка отправки на Email (если он есть)
+        # elif user_info and user_info.get('Email'):
+        #     try:
+        #         # Используем вашу функцию send_email
+        #         from email_monitor import send_email
+        #         send_email(user_info['Email'], f"Заявка №{request_id} закрыта", message_body)
+        #         add_request_message(conn, request_id, 'Internal', f"Система: Уведомление отправлено на Email ({user_info['Email']})", "System")
+        #     except Exception as e:
+        #         print(f"Ошибка Email: {e}")
+        
+        # else:
+        #     add_request_message(conn, request_id, 'Internal', "Система: Уведомление не отправлено (нет контактов)", "System")
+
     else:
         is_disabled = False # Разрешаем редактирование
 
@@ -196,7 +231,7 @@ def render_detail_view(request_id):
         recipient_email = data.get('Email')
 
         # Создаем две вкладки
-        tab_internal, tab_reply = st.tabs(["🔒 Внутренняя заметка", "✉️ Ответ заявителю"])
+        tab_internal, tab_reply, tab_telegram = st.tabs(["🔒 Внутренняя", "✉️ Почта", "📱 Telegram"])
 
         # --- ВКЛАДКА: ВНУТРЕННЯЯ ЗАМЕТКА (только в БД) ---
         with tab_internal:
@@ -260,6 +295,37 @@ def render_detail_view(request_id):
                             st.rerun()
                     else:
                         st.error(f"Ошибка: {status_msg}")
+        
+        # --- ВКЛАДКА: TELEGRAM (Отправка сообщения и файлов) ---
+        with tab_telegram:
+            with st.form("telegram_form", clear_on_submit=True):
+                st.write("📱 **Отправить сообщение в Telegram**")
+                tg_text = st.text_area("Текст для заявителя:", height=100, key="tg_reply_text", disabled=is_disabled)
+                
+                # Добавляем загрузчик файлов
+                tg_file = st.file_uploader("Прикрепить медиафайл (фото/док):", 
+                                          type=['png', 'jpg', 'jpeg', 'pdf', 'zip'], 
+                                          key="tg_file_upload", disabled=is_disabled)
+                
+                send_tg_btn = st.form_submit_button("🚀 Отправить в Telegram", disabled=is_disabled)
+            
+            if send_tg_btn and (tg_text or tg_file):
+                file_save_path = None
+                
+                # Сохраняем файл, если он есть
+                if tg_file:
+                    os.makedirs("attachments", exist_ok=True)
+                    # Генерируем уникальное имя файла
+                    file_save_path = os.path.join("attachments", f"tg_out_{int(time.time())}_{tg_file.name}")
+                    with open(file_save_path, "wb") as f:
+                        f.write(tg_file.getbuffer())
+                
+                # Используем вашу обновленную функцию add_request_message
+                # Она сама выставит Is_Sent = 0, и бот подхватит сообщение
+                if add_request_message(conn, request_id, 'Support', tg_text, current_user, file_save_path):
+                    st.toast("Сообщение и файл поставлены в очередь на отправку в Telegram", icon="🚀")
+                    time.sleep(1)
+                    st.rerun()
 
     # =================================================
     # ПРАВАЯ КОЛОНКА: ИНФОРМАЦИЯ И РЕДАКТИРОВАНИЕ

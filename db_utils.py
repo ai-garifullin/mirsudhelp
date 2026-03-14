@@ -211,15 +211,22 @@ def update_closed_date(request_id, is_closing):
 
 def add_request_message(conn, request_id, sender_type, message_text, author, attachment_path=None):
     """
-    Добавляет сообщение в БД с указанием автора (логина).
+    Добавляет сообщение в БД.
+    Автоматически выставляет Is_Sent = 0, если сообщение от Support (для отправки в Telegram).
     """
     try:
         cursor = conn.cursor()
+        
+        # Если пишет поддержка (Support), ставим Is_Sent = 0, чтобы бот увидел сообщение.
+        # Для Client и Internal ставим 1, чтобы бот их игнорировал.
+        is_sent = 0 if sender_type == 'Support' else 1
+        
         sql = """
-            INSERT INTO request_message (Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path)
-            VALUES (%s, %s, %s, %s, NOW(), %s)
+            INSERT INTO request_message 
+            (Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path, Is_Sent)
+            VALUES (%s, %s, %s, %s, NOW(), %s, %s)
         """
-        cursor.execute(sql, (request_id, sender_type, author, message_text, attachment_path))
+        cursor.execute(sql, (request_id, sender_type, author, message_text, attachment_path, is_sent))
         conn.commit()
         return True
     except Exception as e:
@@ -228,7 +235,7 @@ def add_request_message(conn, request_id, sender_type, message_text, author, att
         return False
     finally:
         cursor.close()
-
+        
 def log_action(login, action, details):
     """Записывает действие пользователя в лог."""
     try:

@@ -2,100 +2,71 @@ import telebot
 import os
 import dotenv
 import time
+import threading
 from db_utils import get_db_connection
 
-# --- 1. НАСТРОЙКИ ---
 dotenv.load_dotenv()
-
 bot = telebot.TeleBot(os.getenv('BOT_TOKEN'))
 user_data = {}
 
-# --- 2. ЛОГИКА КОМАНД ---
+# --- ФОНОВЫЙ ПРОЦЕСС ОТПРАВКИ ОТВЕТОВ ИЗ CRM ---
+def telegram_sender_worker():
+    while True:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            
+            # ВАЖНО: блокируем строку для обновления, чтобы другие процессы не взяли её
+            cursor.execute("""
+                SELECT rm.*, u.Chat_ID 
+                FROM request_message rm
+                JOIN request r ON rm.Request_ID = r.Request_ID
+                JOIN user u ON r.User_ID = u.User_ID
+                WHERE rm.Sender_Type = 'Support' AND rm.Is_Sent = 0
+                FOR UPDATE
+            """)
+            messages = cursor.fetchall()
+            
+            for msg in messages:
+                try:
+                    # Отправляем сообщение
+                    bot.send_message(msg['Chat_ID'], f"💬 Ответ по заявке №{msg['Request_ID']}:\n{msg['Message_Text']}")
+                    # СРАЗУ помечаем как отправленное
+                    cursor.execute("UPDATE request_message SET Is_Sent = 1 WHERE Message_ID = %s", (msg['Message_ID'],))
+                except Exception as e:
+                    print(f"Ошибка отправки конкретного сообщения: {e}")
+            
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Ошибка воркера: {e}")
+        time.sleep(3) # Увеличим интервал до 3 секунд
+
+threading.Thread(target=telegram_sender_worker, daemon=True).start()
+
+# --- ЛОГИКА КОМАНД ---
 
 @bot.message_handler(commands=['start', 'cancel'])
 def start(message):
     chat_id = message.chat.id
     user_data[chat_id] = {}
-    
     conn = get_db_connection()
-    if not conn: 
-        bot.send_message(chat_id, "Ошибка подключения к базе данных.")
-        return
-    
     cursor = conn.cursor(dictionary=True)
     cursor.execute("SELECT District_ID, District_Name FROM district ORDER BY District_Name")
     districts = cursor.fetchall()
     conn.close()
 
-    # Переходим на HTML разметку, она меньше конфликтует с символами _
-    menu_text = "<b>👋 Выберите ваш район из списка:</b>\n<i>(Нажмите на синюю команду слева)</i>\n\n"
-    
+    menu_text = "<b>👋 Выберите ваш район:</b>\n\n"
     for d in districts:
-        # Экранируем название на случай, если там есть < > &
-        dist_name = d['District_Name'].replace('<', '&lt;').replace('>', '&gt;')
-        # Формат: /d_ID — Название
-        menu_text += f"/d_{d['District_ID']}  —  {dist_name}\n"
+        menu_text += f"/d_{d['District_ID']}  —  {d['District_Name']}\n"
+    bot.send_message(chat_id, menu_text, parse_mode='HTML')
 
-    # Используем parse_mode='HTML'
-    try:
-        bot.send_message(chat_id, menu_text, parse_mode='HTML')
-    except Exception as e:
-        # Если список слишком длинный (ТГ ограничивает сообщение 4096 символами)
-        # Отправляем без разметки в случае ошибки
-        bot.send_message(chat_id, menu_text)
-
-# --- ОБРАБОТКА НАЖАТИЯ НА РАЙОН (/d_...) ---
 @bot.message_handler(regexp=r"^/d_\d+$")
 def handle_district_command(message):
     chat_id = message.chat.id
-    
-    try:
-        district_id = int(message.text.replace("/d_", ""))
-    except:
-        bot.send_message(chat_id, "Ошибка выбора.")
-        return
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT District_Name FROM district WHERE District_ID = %s", (district_id,))
-    res = cursor.fetchone()
-    conn.close()
-
-    if res:
-        dist_name = res[0]
-        user_data[chat_id] = {'district_id': district_id, 'step': 'section'}
-        bot.send_message(chat_id, f"✅ Выбран район: **{dist_name}**\n\n"
-                                  "Теперь введите **Номер судебного участка** (просто число).", parse_mode='Markdown')
-    else:
-        bot.send_message(chat_id, "Район не найден.")
-
-# --- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (ТЕКСТ + ФАЙЛЫ) ---
-@bot.message_handler(content_types=['text', 'photo', 'document'])
-def handle_all_steps(message):
-    chat_id = message.chat.id
-    state = user_data.get(chat_id, {})
-    step = state.get('step')
-
-    # 1. Проверка участка
-    if step == 'section':
-        if message.content_type == 'text':
-            process_section(message, message.text.strip())
-        else:
-            bot.send_message(chat_id, "Пожалуйста, введите номер участка цифрами.")
-
-    # 2. Ввод ФИО
-    elif step == 'fio':
-        if message.content_type == 'text':
-            process_fio(message, message.text.strip())
-        else:
-            bot.send_message(chat_id, "Пожалуйста, введите ваше ФИО текстом.")
-
-    # 3. Описание проблемы (Тут принимаем и файлы)
-    elif step == 'desc':
-        process_description(message)
-    
-    else:
-        bot.send_message(chat_id, "Нажмите /start для начала оформления заявки.")
+    district_id = int(message.text.replace("/d_", ""))
+    user_data[chat_id] = {'district_id': district_id, 'step': 'section'}
+    bot.send_message(chat_id, "✅ Район выбран. Введите номер судебного участка (цифрами):")
 
 # --- ШАГ 1: ПРОВЕРКА УЧАСТКА ---
 def process_section(message, text):
@@ -119,13 +90,6 @@ def process_section(message, text):
         bot.send_message(chat_id, f"🏠 Адрес: {res['Address_Name']}\n\nВведите ваше **ФИО и Должность**.", parse_mode='Markdown')
     else:
         bot.send_message(chat_id, "❌ Участок не найден в этом районе. Проверьте номер.")
-
-# --- ШАГ 2: ФИО ---
-def process_fio(message, text):
-    chat_id = message.chat.id
-    user_data[chat_id]['fio'] = text
-    user_data[chat_id]['step'] = 'desc'
-    bot.send_message(chat_id, "Опишите проблему и укажите **контактный телефон**. Вы также можете прикрепить ОДНО фото или документ.", parse_mode='Markdown')
 
 # --- ШАГ 3: СОХРАНЕНИЕ ЗАЯВКИ И ФАЙЛА ---
 def process_description(message):
@@ -200,5 +164,91 @@ def process_description(message):
         conn.close()
         user_data[chat_id] = {}
 
-print("Бот успешно запущен и готов к работе...")
+@bot.message_handler(content_types=['text', 'photo', 'document'])
+def handle_all_steps(message):
+    chat_id = message.chat.id
+    
+    # 1. Сначала проверяем: находится ли пользователь в процессе оформления?
+    state = user_data.get(chat_id, {})
+    if state.get('step'):
+        # Если есть активный шаг оформления (section, fio, desc) — не блокируем!
+        # Переходим к стандартной логике обработки шагов ниже
+        pass
+    else:
+        # 2. ЕСЛИ НЕ ОФОРМЛЯЕТ ЗАЯВКУ — Проверяем активную заявку для переписки
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT r.Request_ID, r.Status 
+            FROM request r 
+            JOIN user u ON r.User_ID = u.User_ID 
+            WHERE u.Chat_ID = %s 
+            ORDER BY r.Request_ID DESC LIMIT 1
+        """, (chat_id,))
+        active_req = cursor.fetchone()
+        conn.close()
+
+        if active_req and active_req['Status'] == '✅ Выполнена':
+            # Блокируем только если это просто сообщение, а не команда /start
+            if message.text != '/start':
+                bot.reply_to(message, "⚠️ У вас нет активных заявок. Чтобы создать новую, введите /start.")
+                return
+        
+        # 3. ЕСЛИ ЗАЯВКА НЕ ВЫПОЛНЕНА — Сохраняем сообщение
+        file_path = None
+        # Сохранение файла, если прислали
+        if message.content_type in ['photo', 'document']:
+            # Получаем file_id
+            file_id = message.photo[-1].file_id if message.photo else message.document.file_id
+            file_info = bot.get_file(file_id)
+            downloaded_file = bot.download_file(file_info.file_path)
+            
+            os.makedirs("attachments", exist_ok=True)
+            file_ext = file_info.file_path.split('.')[-1]
+            file_name = f"cli_{int(time.time())}.{file_ext}"
+            file_path = os.path.join("attachments", file_name)
+            
+            with open(file_path, 'wb') as f:
+                f.write(downloaded_file)
+        
+        text = message.caption or message.text or "[Файл]"
+        
+        # Сохранение в БД
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO request_message 
+            (Request_ID, Sender_Type, Message_Text, Attachment_Path, Is_Sent, Created_At) 
+            VALUES (%s, 'Client', %s, %s, 1, NOW())
+        """, (active_req['Request_ID'], text, file_path))
+        conn.commit()
+        conn.close()
+        
+        bot.reply_to(message, "✅ Ваше сообщение и файл переданы.")
+        return # Выходим, так как сообщение обработано как ответ по заявке
+
+    # 4. СТАНДАРТНЫЕ ШАГИ ОФОРМЛЕНИЯ (если активной заявки нет)
+    state = user_data.get(chat_id, {})
+    step = state.get('step')
+    if step == 'section': process_section(message, message.text.strip())
+    elif step == 'fio': process_fio(message, message.text.strip())
+    elif step == 'desc': process_description(message)
+
+def process_fio(message, text):
+    chat_id = message.chat.id
+    user_data[chat_id]['fio'] = text
+    # Сохраняем или обновляем Chat_ID в базе
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT User_ID FROM user WHERE Full_Name = %s", (text,))
+    res = cursor.fetchone()
+    if res: cursor.execute("UPDATE user SET Chat_ID = %s WHERE User_ID = %s", (chat_id, res[0]))
+    else: cursor.execute("INSERT INTO user (Full_Name, Chat_ID) VALUES (%s, %s)", (text, chat_id))
+    conn.commit()
+    conn.close()
+    
+    user_data[chat_id]['step'] = 'desc'
+    bot.send_message(chat_id, "Опишите проблему. Вы можете прикрепить файл.")
+
+print("Бот запущен...")
 bot.infinity_polling()
