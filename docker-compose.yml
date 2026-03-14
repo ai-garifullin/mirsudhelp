@@ -80,7 +80,7 @@ services:
     build: .
     container_name: service_desk_bot
     restart: always
-    command: sh -c "python service_desk_bot.py & python email_monitor.py"
+    command: sh -c "python service_desk_bot.py & python not_bot.py & python email_monitor.py"
     env_file:
       - .env
     environment:
