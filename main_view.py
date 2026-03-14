@@ -126,21 +126,19 @@ def render_main_view():
 
     # --- ПОДГОТОВКА ТАБЛИЦЫ ---
     # Мы делаем относительную ссылку. В Safari на iOS это сработает как переход внутри сайта.
-    data['ID_LINK'] = "/?id=" + data['ID'].astype(str)
+    #data['ID_LINK'] = "/?id=" + data['ID'].astype(str)
 
     # Выводим таблицу
-    st.dataframe(
+    event = st.dataframe(
         data,
         height=600,
         use_container_width=True,
         hide_index=True,
-        column_order=("ID_LINK", "Статус", "Дата", "Исполнитель", "Адрес", "Район", "Уч.", "Вид работ", "Тип", "Описание", "Закрыта"),
+        on_select="rerun",
+        selection_mode="single-row",
+        column_order=("ID", "Статус", "Дата", "Исполнитель", "Адрес", "Район", "Уч.", "Вид работ", "Тип", "Описание", "Закрыта"),
         column_config={
-            "ID_LINK": st.column_config.LinkColumn(
-                label="ID",
-                display_text=r"id=(\d+)", # Показывает только цифры
-                width=60,
-            ),
+            "ID": st.column_config.NumberColumn(label="ID", width=60),
             "Статус": st.column_config.SelectboxColumn(options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], width=110),
             "Дата": st.column_config.TextColumn(width="small"),
             "Исполнитель": st.column_config.SelectboxColumn(options=list(executors_map.keys()), width=120),
@@ -152,4 +150,15 @@ def render_main_view():
             "Уч.": st.column_config.NumberColumn(width=40),
             "Закрыта": st.column_config.TextColumn(width="small"),
         }
+        
     )
+    selected_rows = event.selection.rows
+    if event.selection.rows:
+        selected_index = event.selection.rows[0]
+        selected_id = data.iloc[selected_index]['ID']
+    
+        # Устанавливаем параметр
+        if st.query_params.get("id") != str(selected_id):
+            st.query_params["id"] = selected_id
+            # ПРИНУДИТЕЛЬНЫЙ ПЕРЕЗАПУСК
+            st.rerun()
