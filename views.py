@@ -311,12 +311,14 @@ def render_detail_view(request_id):
 
         # 2. Неизменяемые поля (Итоги)
         st.markdown("### Итог")
-        st.text_area("Общий результат:", value=data.get('Result', '') or '', disabled=True, height=218)
+        st.text_area("Общий результат:", value=data.get('Result', '') or '', disabled=True, height=208)
         col_i1, col_i2 = st.columns(2)
         with col_i1:
             st.number_input("Общее время:", value=int(data.get('Time_Spent', 0) or 0), disabled=True)
+            fuel_cons = st.number_input("Расход (л/100км):", value=float(data.get('Fuel_Consumption', 0.0) or 0.0), step=0.1, disabled=is_disabled)
         with col_i2:
             st.number_input("Общий пробег:", value=float(data.get('Mileage', 0.0) or 0.0), disabled=True)
+            fuel_price = st.number_input("Цена бензина (руб):", value=float(data.get('Fuel_Price', 0.0) or 0.0), step=0.1, disabled=is_disabled)
 
         st.write("---")
 
@@ -366,6 +368,17 @@ def render_detail_view(request_id):
                 if str(new_service) != str(data.get('Service_Type', '')):
                     update_db_field(request_id, "Service_Type", new_service)
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Вид работ изменен на '{new_service}'")
+                
+                old_fuel = float(data.get('Fuel_Consumption') or 0.0)
+                if float(fuel_cons) != old_fuel:
+                    update_fuel_record(request_id, "Fuel_Consumption", fuel_cons)
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Расход изменен на '{fuel_cons}'")
+                    # Расход меняется редко, можно не спамить в лог, или логировать по желанию
+
+                old_price = float(data.get('Fuel_Price') or 0.0)
+                if float(fuel_price) != old_price:
+                    update_fuel_record(request_id, "Fuel_Price", fuel_price)
+                    log_action(current_user, "UPDATE", f"Заявка #{request_id}: Цена бензина изменена на '{fuel_price}'")
 
                 st.success("Изменения сохранены!")
                 st.rerun() # Обновляем страницу, чтобы данные обновились из БД

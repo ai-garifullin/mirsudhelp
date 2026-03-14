@@ -162,7 +162,7 @@ def render_main_view():
             "Статус": st.column_config.SelectboxColumn(options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], width=110),
             "Дата": st.column_config.TextColumn(width="small"),
             "Исполнитель": st.column_config.SelectboxColumn(options=list(executors_map.keys()), width=120),
-            "Вид работ": st.column_config.SelectboxColumn(options=["Удаленно", "Выезд"], width="small"),
+            "Вид работ": st.column_config.SelectboxColumn(options=["Удаленно", "Выезд", "Дубль"], width="small"),
             "Тип": st.column_config.SelectboxColumn(options=list(types_map.keys()), width="medium"),
             "Описание": st.column_config.TextColumn(width="large"),
             "Адрес": st.column_config.TextColumn(width="medium"),
