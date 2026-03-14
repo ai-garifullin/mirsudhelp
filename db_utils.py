@@ -321,26 +321,23 @@ def get_user_tg_id(user_name):
     except Exception as e:
         return None
     
-def get_director_tg_id():
-    """Находит телеграм ID директора по его имени в базе"""
+def get_directors_tg_ids():
     conn = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Используем %s для безопасности (в стиле MySQL)
-        query = "SELECT telegram_id FROM executor WHERE Full_Name = %s LIMIT 1"
+        # Ищем сразу двоих
+        query = "SELECT Full_Name, telegram_id FROM executor WHERE Full_Name IN (%s, %s)"
         cursor.execute(query, ('Фомин (Кзн)', 'Гайнутдинов (Кзн)'))
         
-        result = cursor.fetchone()
-        
-        # Если result есть, возвращаем первый элемент, иначе None
-        return result[0] if result else None
+        results = cursor.fetchall()
+        # Возвращаем словарь вида: {'Фомин (Кзн)': 12345, 'Второй Директор (Имя)': 67890}
+        return {row[0]: row[1] for row in results}
         
     except Exception as e:
-        print(f"Ошибка при поиске ID директора: {e}")
-        return None
-        
+        print(f"Ошибка: {e}")
+        return {}
     finally:
         if conn:
             conn.close()
