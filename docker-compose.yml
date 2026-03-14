@@ -63,6 +63,15 @@ services:
     # Запускаем form_app.py на другом порту
     command: streamlit run form_app.py --server.port=8502 --server.address=0.0.0.0
 
+  sal:
+    build: .
+    container_name: service_desk_salary
+    restart: always
+    ports:
+      - "8503:8503"
+    
+    command: streamlit run form_app.py --server.port=8503 --server.address=0.0.0.0
+    
   # 4. Боты (Telegram + Email)
   bot:
     build: .
