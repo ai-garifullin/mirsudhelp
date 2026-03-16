@@ -13,7 +13,19 @@ from views import render_detail_view
 # --- 1. ЗАГРУЗКА НАСТРОЕК ---
 load_dotenv()
 st.set_page_config(page_title="Service Desk Mirsud", layout="wide")
+import streamlit.components.v1 as components
 
+# Вставляем JS, который достанет куки и передаст их Streamlit
+components.html(
+    """
+    <script>
+        // Получаем все куки
+        var cookies = document.cookie;
+        // Отправляем их в Streamlit через postMessage
+        window.parent.postMessage({type: 'streamlit:setComponentValue', key: 'js_cookies', value: cookies}, '*');
+    </script>
+    """, height=0
+)
 # Инициализация кук
 cookie_password = os.getenv('cookie_encryption_key')
 cookies = EncryptedCookieManager(
@@ -33,6 +45,16 @@ except json.JSONDecodeError:
 
 # --- 2. ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
 def check_login():
+    import streamlit.components.v1 as components
+    # Выводим куки, которые видит браузер, прямо в боковую панель
+    components.html(
+        """
+        <script>
+            var c = document.cookie;
+            document.write("<div style='color:red; font-size:12px;'>Браузер видит: " + c + "</div>");
+        </script>
+        """, height=50
+    )
     """Управляет входом: Magic Link -> Cookies -> Session -> Form"""
     
     # А. Обработка Magic Link (Приоритет)
@@ -125,9 +147,12 @@ def check_login():
                 else:
                     st.error("Неверный логин или пароль")
     return False
+# Это покажет, что реально вернул браузер
+st.sidebar.error(f"БРАУЗЕР ВИДИТ КУКИ: {st.session_state.get('browser_cookies', 'Жду данные...')}")
 
 # --- 3. ГЛАВНЫЙ ЦИКЛ ПРИЛОЖЕНИЯ ---
 if check_login():
+    
     # Дебаг-блок для мониторинга iOS
     if 'debug_cookies' not in st.session_state:
         st.session_state.debug_cookies = True
