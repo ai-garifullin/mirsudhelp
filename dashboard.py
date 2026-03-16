@@ -65,16 +65,17 @@ def check_login():
                 del st.query_params["auth"]
                 st.rerun()
 
-    # Б. Восстановление из Cookie
     auth_token_json = cookies.get("auth_token")
     if auth_token_json and not st.session_state.get("logged_in"):
+        # ДОБАВЬТЕ ЭТОТ ЛОГ:
+        st.sidebar.info(f"DEBUG: Raw cookie value: {auth_token_json}")
+        
         try:
             user_data = json.loads(auth_token_json)
             st.session_state["logged_in"] = True
             st.session_state["user_login"] = user_data['login']
-            # ЛОГ: если это сработало, вы увидите это в приложении
+            st.rerun() # Добавьте принудительный rerun после успешного восстановления
         except Exception as e:
-            # Сюда iOS может попадать, если кука «битая» или повреждена WebKit
             st.sidebar.error(f"Cookie decode error: {e}")
             if 'auth_token' in cookies:
                 del cookies['auth_token']
