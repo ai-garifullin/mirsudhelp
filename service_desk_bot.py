@@ -16,7 +16,7 @@ def telegram_sender_worker():
             conn = get_db_connection()
             cursor = conn.cursor(dictionary=True)
             
-            # ВАЖНО: блокируем строку для обновления, чтобы другие процессы не взяли её
+            # Выбираем сообщения от саппорта, которые еще не ушли
             cursor.execute("""
                 SELECT rm.*, u.Chat_ID 
                 FROM request_message rm
@@ -29,18 +29,39 @@ def telegram_sender_worker():
             
             for msg in messages:
                 try:
-                    # Отправляем сообщение
-                    bot.send_message(msg['Chat_ID'], f"💬 Ответ по заявке №{msg['Request_ID']}:\n{msg['Message_Text']}")
-                    # СРАЗУ помечаем как отправленное
+                    chat_id = msg['Chat_ID']
+                    text = f"💬 Ответ по заявке №{msg['Request_ID']}:\n{msg['Message_Text']}"
+                    file_path = msg.get('Attachment_Path')
+
+                    # ЛОГИКА ОТПРАВКИ
+                    if file_path and os.path.exists(file_path):
+                        # Определяем тип файла
+                        ext = file_path.lower().split('.')[-1]
+                        
+                        with open(file_path, 'rb') as f:
+                            if ext in ['jpg', 'jpeg', 'png']:
+                                # Отправляем как фото
+                                bot.send_photo(chat_id, f, caption=text)
+                            else:
+                                # Отправляем как документ (для docx, rar, pdf и прочих)
+                                bot.send_document(chat_id, f, caption=text)
+                    else:
+                        # Если файла нет, просто шлем текст
+                        bot.send_message(chat_id, text)
+
+                    # Помечаем как отправленное
                     cursor.execute("UPDATE request_message SET Is_Sent = 1 WHERE Message_ID = %s", (msg['Message_ID'],))
+                    conn.commit() # Коммитим каждое успешно отправленное
+                    
                 except Exception as e:
-                    print(f"Ошибка отправки конкретного сообщения: {e}")
+                    print(f"Ошибка отправки сообщения ID {msg.get('Message_ID')}: {e}")
             
-            conn.commit()
+            cursor.close()
             conn.close()
         except Exception as e:
             print(f"Ошибка воркера: {e}")
-        time.sleep(3) # Увеличим интервал до 3 секунд
+        
+        time.sleep(3)
 
 threading.Thread(target=telegram_sender_worker, daemon=True).start()
 

@@ -72,7 +72,10 @@ def check_login():
             user_data = json.loads(auth_token_json)
             st.session_state["logged_in"] = True
             st.session_state["user_login"] = user_data['login']
-        except:
+            # ЛОГ: если это сработало, вы увидите это в приложении
+        except Exception as e:
+            # Сюда iOS может попадать, если кука «битая» или повреждена WebKit
+            st.sidebar.error(f"Cookie decode error: {e}")
             if 'auth_token' in cookies:
                 del cookies['auth_token']
                 cookies.save()
@@ -124,6 +127,14 @@ def check_login():
 
 # --- 3. ГЛАВНЫЙ ЦИКЛ ПРИЛОЖЕНИЯ ---
 if check_login():
+    # Дебаг-блок для мониторинга iOS
+    if 'debug_cookies' not in st.session_state:
+        st.session_state.debug_cookies = True
+
+    # Вывод статуса кук для отладки
+    if st.session_state.debug_cookies:
+        st.sidebar.warning(f"Cookies ready: {cookies.ready()}")
+        st.sidebar.info(f"Auth token exists: {'auth_token' in cookies}")
     # Проверка готовности менеджера кук после авторизации
     if not cookies.ready():
         st.stop()
@@ -133,20 +144,27 @@ if check_login():
         st.info(f"Роль: **{st.session_state.get('user_role')}**")
         
         if st.button("Выйти из системы"):
+            # 1. Удаляем из session_state
             st.session_state.clear()
             st.query_params.clear()
-            # Полная очистка кук
+            
+            # 2. Удаляем из менеджера
+            if 'auth_token' in cookies:
+                del cookies['auth_token']
+                cookies.save()
+            
+            # 3. Точечный JS (только для нашей куки, без перебора всего браузера)
+            # Замените 'mirsud_app_auth_token' на точное имя куки, 
+            # которое вы видите в инспекторе браузера (вкладка Application -> Cookies)
             js_logout = """
                 <script>
-                    document.cookie.split(";").forEach(function(c) { 
-                        document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-                    });
+                    document.cookie = "mirsud_app_auth_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
                     window.location.reload();
                 </script>
             """
-            st.components.v1.html(js_logout)
+            st.components.v1.html(js_logout, height=0)
             st.stop()
-    
+
     # --- РОУТЕР (Управление отображением) ---
     # Получаем актуальный ID из URL
     url_params = st.query_params

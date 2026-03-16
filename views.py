@@ -5,8 +5,47 @@ from db_utils import * # Убедитесь, что все нужные функ
 from email_monitor import send_email
 from not_bot import *
 import time
+import requests
+from urllib.parse import urlencode
+import hashlib
+import dotenv
+import os
+dotenv.load_dotenv()
 
+# Вставьте сюда токен, полученный в BotFather
 
+def get_yandex_disk_resources(public_key, path=""):
+    """Рекурсивно собирает ВСЕ файлы из всех папок по ссылке"""
+    base_url = 'https://cloud-api.yandex.net/v1/disk/public/resources'
+    # Увеличиваем limit до 1000, чтобы точно увидеть все файлы
+    params = {'public_key': public_key, 'limit': 1000}
+    if path:
+        params['path'] = path
+        
+    final_url = base_url + '?' + urlencode(params)
+    response = requests.get(final_url)
+    
+    files_dict = {}
+    
+    if response.status_code == 200:
+        data = response.json()
+        items = data.get('_embedded', {}).get('items', [])
+        
+        for item in items:
+            if item['type'] == 'file':
+                # Сохраняем путь + имя, чтобы не запутаться в одинаковых именах
+                full_name = f"{path}/{item['name']}" if path else item['name']
+                files_dict[full_name] = item['file']
+            elif item['type'] == 'dir':
+                # Если это папка — идем внутрь!
+                inner_path = item['path'] # Это внутренний путь Яндекса
+                # Рекурсивно вызываем эту же функцию
+                files_dict.update(get_yandex_disk_resources(public_key, inner_path))
+    
+    return files_dict
+
+cloud_link = os.getenv('CLOUD_LINK')
+all_cloud_resources = get_yandex_disk_resources(cloud_link)
 
 def render_detail_view(request_id):
     """Рисует страницу-карточку с чатом слева и данными справа."""
@@ -87,6 +126,11 @@ def render_detail_view(request_id):
             file_ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
             
+            # Генерируем уникальный хэш для текущего пути к файлу + времени/состояния
+            # Если нужно, чтобы ключ был СОВСЕМ уникальным при каждом рендере, 
+            # можно добавить time.time()
+            unique_id = hashlib.md5(file_path.encode()).hexdigest()[:8]
+            
             with st.expander("📎 Вложение: " + file_name):
                 if file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
                     st.image(file_path, use_container_width=True)
@@ -97,7 +141,7 @@ def render_detail_view(request_id):
                             label=f"Скачать {file_name}",
                             data=f,
                             file_name=file_name,
-                            key=file_path # уникальный ключ
+                            key=f"dl_{unique_id}_{file_name}" # Уникальный ключ
                         )
     with left_col:
         st.subheader("✉️ Переписка с заявителем")
@@ -268,64 +312,116 @@ def render_detail_view(request_id):
             with st.form("reply_form", clear_on_submit=True):
                 st.write("📤 **Написать ответ заявителю**")
                 reply_text = st.text_area("Текст сообщения:", height=120, disabled=is_disabled, key="ta_reply")
-                uploaded_file = st.file_uploader("Прикрепить медиафайл:", 
-                                                type=['png', 'jpg', 'jpeg', 'pdf', 'zip'],
+                
+                # Добавляем выбор из облака
+                selected_cloud_file_reply = st.selectbox(
+                    "📁 Выбрать файл из облака (Я.Диск):", 
+                    options=["Не выбрано"] + list(all_cloud_resources.keys()),
+                    key="cloud_file_picker_reply"
+                )
+                
+                uploaded_file = st.file_uploader("ИЛИ прикрепить файл с ПК:", 
+                                                type=None, # Разрешаем все типы
                                                 disabled=is_disabled, key="file_reply")
+                
                 send_btn = st.form_submit_button("📨 Отправить почту", disabled=is_disabled)
 
-            if send_btn and (reply_text or uploaded_file):
+            if send_btn and (reply_text or uploaded_file or selected_cloud_file_reply != "Не выбрано"):
                 if not recipient_email:
                     st.error("❌ У этого участка не указан Email!")
                 else:
                     file_save_path = None
+                    os.makedirs("attachments", exist_ok=True)
+                    
+                    # Приоритет: локальный файл -> облачный файл
                     if uploaded_file:
-                        os.makedirs("attachments", exist_ok=True)
                         file_save_path = os.path.join("attachments", f"{int(time.time())}_{uploaded_file.name}")
                         with open(file_save_path, "wb") as f:
                             f.write(uploaded_file.getbuffer())
-
-                    subject = f"Re: Заявка №{request_id}"
-                    status_msg = send_email(recipient_email, subject, reply_text, attachment=file_save_path)
                     
-                    if "✅" in status_msg:
-                        # Используем новую функцию из db_utils
-                        if add_request_message(conn, request_id, 'Support', reply_text, current_user, file_save_path):
-                            st.toast("Письмо успешно отправлено!", icon="✅")
-                            time.sleep(1)
-                            st.rerun()
-                    else:
-                        st.error(f"Ошибка: {status_msg}")
+                    elif selected_cloud_file_reply != "Не выбрано":
+                        # Логика скачивания с облака
+                        download_url = all_cloud_resources[selected_cloud_file_reply]
+                        file_name_clean = selected_cloud_file_reply.split('/')[-1]
+                        file_save_path = os.path.join("attachments", f"{int(time.time())}_{file_name_clean}")
+                        
+                        with st.spinner("Скачиваю файл из облака..."):
+                            r = requests.get(download_url)
+                            if r.status_code == 200:
+                                with open(file_save_path, "wb") as f:
+                                    f.write(r.content)
+                            else:
+                                st.error("Не удалось скачать файл из облака")
+                                file_save_path = None
+
+                    # Отправка, если файл успешно подготовлен или есть текст
+                    if file_save_path or reply_text:
+                        subject = f"Re: Заявка №{request_id}"
+                        status_msg = send_email(recipient_email, subject, reply_text, attachment=file_save_path)
+                        
+                        if "✅" in status_msg:
+                            if add_request_message(conn, request_id, 'Support', reply_text, current_user, file_save_path):
+                                st.toast("Письмо успешно отправлено!", icon="✅")
+                                time.sleep(1)
+                                st.rerun()
+                        else:
+                            st.error(f"Ошибка: {status_msg}")
         
         # --- ВКЛАДКА: TELEGRAM (Отправка сообщения и файлов) ---
         with tab_telegram:
             with st.form("telegram_form", clear_on_submit=True):
                 st.write("📱 **Отправить сообщение в Telegram**")
-                tg_text = st.text_area("Текст для заявителя:", height=100, key="tg_reply_text", disabled=is_disabled)
+                tg_text = st.text_area("Текст сообщения:", height=100, key="tg_reply_text_v2")
                 
-                # Добавляем загрузчик файлов
-                tg_file = st.file_uploader("Прикрепить медиафайл (фото/док):", 
-                                          type=['png', 'jpg', 'jpeg', 'pdf', 'zip'], 
-                                          key="tg_file_upload", disabled=is_disabled)
+                # Выпадающий список теперь содержит ВСЕ файлы (docx, rar, zip и т.д.)
+                selected_resource = st.selectbox(
+                    "📁 Выбрать из облака (любой формат):", 
+                    options=["Не выбрано"] + list(all_cloud_resources.keys()),
+                    help="Здесь отображаются все документы, архивы и подпапки"
+                )
                 
-                send_tg_btn = st.form_submit_button("🚀 Отправить в Telegram", disabled=is_disabled)
-            
-            if send_tg_btn and (tg_text or tg_file):
+                # Убрали ограничение по type, чтобы разрешить docx/rar при ручной загрузке
+                tg_file = st.file_uploader("ИЛИ загрузить файл с ПК:", 
+                                        type=None, 
+                                        key="tg_file_upload_v2")
+                
+                send_tg_btn = st.form_submit_button("🚀 Отправить")
+
+            if send_tg_btn:
                 file_save_path = None
                 
-                # Сохраняем файл, если он есть
-                if tg_file:
+                # 1. Проверка: не выбрана ли папка
+                if selected_resource.startswith("📁"):
+                    st.error("Вы выбрали папку. Пожалуйста, выберите конкретный файл внутри неё.")
+                
+                # 2. Логика сохранения файла
+                elif tg_file:
                     os.makedirs("attachments", exist_ok=True)
-                    # Генерируем уникальное имя файла
-                    file_save_path = os.path.join("attachments", f"tg_out_{int(time.time())}_{tg_file.name}")
+                    file_save_path = os.path.join("attachments", f"tg_{int(time.time())}_{tg_file.name}")
                     with open(file_save_path, "wb") as f:
                         f.write(tg_file.getbuffer())
                 
-                # Используем вашу обновленную функцию add_request_message
-                # Она сама выставит Is_Sent = 0, и бот подхватит сообщение
-                if add_request_message(conn, request_id, 'Support', tg_text, current_user, file_save_path):
-                    st.toast("Сообщение и файл поставлены в очередь на отправку в Telegram", icon="🚀")
-                    time.sleep(1)
-                    st.rerun()
+                elif selected_resource != "Не выбрано":
+                    with st.spinner("Скачиваю файл из облака..."):
+                        download_url = all_cloud_resources[selected_resource]
+                        os.makedirs("attachments", exist_ok=True)
+                        file_save_path = os.path.join("attachments", selected_resource)
+                        
+                        # Скачиваем любой файл (docx, rar и т.д.) как байты
+                        r = requests.get(download_url)
+                        if r.status_code == 200:
+                            with open(file_save_path, "wb") as f:
+                                f.write(r.content)
+                        else:
+                            st.error("Не удалось скачать файл из облака")
+                            file_save_path = None
+
+                # 3. Отправка в БД / Бот
+                if file_save_path or tg_text:
+                    if add_request_message(conn, request_id, 'Support', tg_text, current_user, file_save_path):
+                        st.toast("Сообщение готово к отправке!", icon="✅")
+                        time.sleep(1)
+                        st.rerun()
 
     # =================================================
     # ПРАВАЯ КОЛОНКА: ИНФОРМАЦИЯ И РЕДАКТИРОВАНИЕ
