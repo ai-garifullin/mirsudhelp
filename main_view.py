@@ -14,11 +14,9 @@ def render_main_view():
                 padding-top: 0rem !important;
                 padding-bottom: 0rem !important;
             }
-            .stAppHeader {
-                display: none !important;
-            }
+            
             h1 {
-                margin-top: -50px !important;
+                margin-top: -20px !important;
                 padding-top: 0 !important;
             }
         </style>
