@@ -536,7 +536,7 @@ def render_detail_view(request_id):
                     if "id" in st.query_params:
                         del st.query_params["id"]
                     
-                    st.rerun() # Перезапускаем интерфейс
+                    st.rerun()
 
                 # 2. ЛОГИКА ДОБАВЛЕНИЯ РЕЗУЛЬТАТОВ (Авто-счетчик)
                 if st.session_state.new_res.strip() or st.session_state.new_time > 0 or st.session_state.new_mile > 0:
