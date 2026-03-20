@@ -1,7 +1,6 @@
 import streamlit as st
-import re
 from datetime import datetime
-from db_utils import * # Убедитесь, что все нужные функции есть в db_utils.py
+from db_utils import *
 from email_monitor import send_email
 from not_bot import *
 import time
@@ -10,9 +9,8 @@ from urllib.parse import urlencode
 import hashlib
 import dotenv
 import os
-dotenv.load_dotenv()
 
-# Вставьте сюда токен, полученный в BotFather
+dotenv.load_dotenv()
 
 def get_yandex_disk_resources(public_key, path=""):
     """Рекурсивно собирает ВСЕ файлы из всех папок по ссылке"""
@@ -63,49 +61,29 @@ def render_detail_view(request_id):
                 padding-top: 0 !important;
             }
         </style>
-    """, unsafe_allow_html=True)
-    
-    conn = get_db_connection()
+    """, unsafe_allow_html=True) 
 
     # --- 1. ЗАГРУЗКА ДАННЫХ И КНОПКА "НАЗАД" ---
+    # 1. ЗАГРУЗКА ДАННЫХ ЧЕРЕЗ UTILS
     data = fetch_single_request(request_id)
     if not data:
         st.error("Заявка не найдена.")
         return
+
     st.title(f"📝 Заявка №{request_id}, **Адрес:** {data.get('Address_Name', 'Не указан')}")
     
     if st.button("⬅️ Назад к списку"):
         st.session_state.selected_request_id = None
-
-        if "id" in st.query_params:
-            del st.query_params["id"]
-
+        if "id" in st.query_params: del st.query_params["id"]
         st.rerun()
 
-    if data['Status'] == '✅ Выполнена' or data['Status'] == 'Дубль':
-        is_disabled = True  # Блокируем поля
-        ##Отправка уведомления пользователю в Telegram о том, что заявка выполнена (если он привязан)
-        conn_tmp = get_db_connection()
-        cur_tmp = conn_tmp.cursor(dictionary=True)
-        
-        conn_tmp.close()
-        
-        message_body = f"✅ Ваша заявка №{request_id} выполнена и закрыта. Спасибо за обращение!"
-
-    else:
-        is_disabled = False # Разрешаем редактирование
-
-    current_service_type = st.session_state.get('st_service', data.get('Service_Type'))
-
+    # --- ЛОГИКА БЛОКИРОВКИ ---
+    is_admin = st.session_state.get("user_role") == 'admin'
+    is_finished = data['Status'] in ['✅ Выполнена', 'Дубль']
+    is_disabled = is_finished or not is_admin
     
+    current_service_type = st.session_state.get('st_service', data.get('Service_Type'))
     fuel_disabled = is_disabled or (current_service_type == "Удаленно")
-
-        # Блокировка полей неадминам
-    is_admin = st.session_state["user_role"] == 'admin'
-    if not is_admin:
-        is_disabled = True
-
-    # Получаем логин текущего пользователя для лога
     current_user = st.session_state.get("user_login", "Unknown")
 
     # --- 2. ДЕЛИМ ЭКРАН НА ДВЕ КОЛОНКИ ---
@@ -232,44 +210,26 @@ def render_detail_view(request_id):
             """, unsafe_allow_html=True)
 
             # 2. ПОЛУЧЕНИЕ ПЕРЕПИСКИ (Из таблицы request_message)
-            # conn должен быть определен выше в вашем коде
-            cursor = conn.cursor()
-            sql_chat = """
-                SELECT Sender_Type, Message_Text, Created_At, Attachment_Path, Author
-                FROM request_message 
-                WHERE Request_ID = %s 
-                ORDER BY Created_At ASC
-            """
-            cursor.execute(sql_chat, (request_id,))
-            messages = cursor.fetchall()
+            messages = fetch_request_messages(request_id)
             
             # 3. ЦИКЛ ОТРИСОВКИ СООБЩЕНИЙ
-            for sender, text, created_at, attachment_path, author in messages:
-                # Определяем стиль и заголовок
-                if sender == 'Client':
-                    css_class = "client-msg"
-                    sender_name = f"👤 {data.get('User_Name', 'Не указан')}"
-                elif sender == 'Internal':
-                    css_class = "internal-msg"
-                    sender_name = f"📌{author}"
+            messages = fetch_request_messages(request_id)
+            for msg in messages:
+                if msg['Sender_Type'] == 'Client':
+                    css, name = "client-msg", f"👤 {data.get('User_Name')}"
+                elif msg['Sender_Type'] == 'Internal':
+                    css, name = "internal-msg", f"📌 {msg['Author']}"
                 else:
-                    css_class = "support-msg"
-                    sender_name = f'🛠 {author}'
-                
-                time_formatted = created_at.strftime('%d.%m.%Y %H:%M')
-                text_formatted = text.replace('\n', '<br>')
+                    css, name = "support-msg", f"🛠 {msg['Author']}"
                 
                 st.markdown(f"""
-                    <div class='message-box {css_class}'>
-                        <div class='meta-info'>
-                            <span>{sender_name}</span>
-                            <span>{time_formatted}</span>
-                        </div>
-                        {text_formatted}
+                    <div class='message-box {css}'>
+                        <div class='meta-info'><span>{name}</span><span>{msg['Created_At'].strftime('%d.%m %H:%M')}</span></div>
+                        {msg['Message_Text'].replace('\n', '<br>')}
                     </div>
                 """, unsafe_allow_html=True)
-                if attachment_path:
-                    display_attachment(attachment_path)
+                if msg['Attachment_Path']:
+                    display_attachment(msg['Attachment_Path'])
                 
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -306,7 +266,7 @@ def render_detail_view(request_id):
 
                 # Вызываем вашу функцию из db_utils
                 # ВАЖНО: здесь НЕТ функции send_email, файл остается только у нас
-                if add_request_message(conn, request_id, 'Internal', internal_text, current_user, file_save_path):
+                if add_request_message(request_id, 'Internal', internal_text, current_user, file_save_path):
                     st.toast("Внутренняя заметка с файлом сохранена", icon="📌")
                     time.sleep(1)
                     st.rerun()
@@ -364,7 +324,7 @@ def render_detail_view(request_id):
                         status_msg = send_email(recipient_email, subject, reply_text, attachment=file_save_path)
                         
                         if "✅" in status_msg:
-                            if add_request_message(conn, request_id, 'Support', reply_text, current_user, file_save_path):
+                            if add_request_message(request_id, 'Support', reply_text, current_user, file_save_path):
                                 st.toast("Письмо успешно отправлено!", icon="✅")
                                 time.sleep(1)
                                 st.rerun()
@@ -422,7 +382,7 @@ def render_detail_view(request_id):
 
                 # 3. Отправка в БД / Бот
                 if file_save_path or tg_text:
-                    if add_request_message(conn, request_id, 'Support', tg_text, current_user, file_save_path):
+                    if add_request_message(request_id, 'Support', tg_text, current_user, file_save_path):
                         st.toast("Сообщение готово к отправке!", icon="✅")
                         time.sleep(1)
                         st.rerun()

@@ -53,7 +53,7 @@ def get_db_connection():
     return None
 
 
-
+# --- ФУНКЦИИ АВТОРИЗАЦИИ ---
 def get_user_by_login(login):
     """Получает данные пользователя по логину."""
     conn = get_db_connection()
@@ -199,6 +199,23 @@ def fetch_single_request(request_id):
     conn.close()
     return data
 
+def fetch_request_messages(request_id):
+    """Получает историю переписки по заявке."""
+    conn = get_db_connection()
+    if not conn: return []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = """
+            SELECT Sender_Type, Message_Text, Created_At, Attachment_Path, Author
+            FROM request_message 
+            WHERE Request_ID = %s 
+            ORDER BY Created_At ASC
+        """
+        cursor.execute(query, (request_id,))
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
 @st.cache_data
 def get_lookup_options(table, key_col, val_col):
     conn = get_db_connection()
@@ -253,16 +270,21 @@ def update_closed_date(request_id, is_closing):
     conn.close()
 
 # --- ФУНКЦИИ ДЛЯ SERVICE_DESK_BOT и NOT_BOT MONITOR ---
-def add_request_message(conn, request_id, sender_type, message_text, author, attachment_path=None):
+def add_request_message(request_id, sender_type, message_text, author, attachment_path=None):
     """
-    Добавляет сообщение в БД.
-    Автоматически выставляет Is_Sent = 0, если сообщение от Support (для отправки в Telegram).
+    Добавляет сообщение в БД, самостоятельно управляя соединением.
+    Автоматически выставляет Is_Sent = 0 для 'Support', чтобы бот мог отправить сообщение.
     """
+    conn = get_db_connection()
+    if not conn:
+        return False
+        
     try:
         cursor = conn.cursor()
         
-        # Если пишет поддержка (Support), ставим Is_Sent = 0, чтобы бот увидел сообщение.
-        # Для Client и Internal ставим 1, чтобы бот их игнорировал.
+        # Логика флага для Telegram-бота:
+        # 0 - бот должен подхватить и отправить
+        # 1 - игнорировать (внутренние заметки или сообщения от клиента)
         is_sent = 0 if sender_type == 'Support' else 1
         
         sql = """
@@ -270,91 +292,26 @@ def add_request_message(conn, request_id, sender_type, message_text, author, att
             (Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path, Is_Sent)
             VALUES (%s, %s, %s, %s, NOW(), %s, %s)
         """
-        cursor.execute(sql, (request_id, sender_type, author, message_text, attachment_path, is_sent))
+        cursor.execute(sql, (
+            request_id, 
+            sender_type, 
+            author, 
+            message_text, 
+            attachment_path, 
+            is_sent
+        ))
+        
         conn.commit()
         return True
     except Exception as e:
-        print(f"Database Error: {e}")
+        print(f"Database Error in add_request_message: {e}")
         conn.rollback()
         return False
     finally:
-        cursor.close()
-        
-def log_action(login, action, details):
-    """Записывает действие пользователя в лог."""
-    try:
-        conn = get_db_connection()
-        if not conn: return
-        
-        cursor = conn.cursor()
-        sql = "INSERT INTO action_log (user_login, action_type, details) VALUES (%s, %s, %s)"
-        cursor.execute(sql, (login, action, details))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        # В реальном приложении здесь лучше писать в отдельный файл логов,
-        # чтобы не зациклиться, если сама база упала.
-        print(f"!!! ОШИБКА ЛОГИРОВАНИЯ: {e}")
-
-def duplicate_request(old_id):
-    """
-    Создает полную копию заявки с новой датой и пустой служебной информацией.
-    Копирует всю переписку (сообщения).
-    """
-    conn = get_db_connection()
-    if not conn:
-        return None
-    
-    cursor = conn.cursor()
-    try:
-        # 1. Создаем новую запись в таблице request на основе старой
-        # Поля Result, Time_Spent обнуляем, Status ставим '🔴 Новая', Closed_At в NULL
-        sql_insert_request = """
-            INSERT INTO request (
-                Date_Received, Status, Service_Type, Description, 
-                Result, Time_Spent, Closed_At, User_ID, 
-                Court_Section_ID, Request_Type_ID, Assigned_Executor_ID
-            )
-            SELECT 
-                NOW(), '🔴 Новая', Service_Type, Description, 
-                '', 0, NULL, User_ID, 
-                Court_Section_ID, Request_Type_ID, Assigned_Executor_ID
-            FROM request 
-            WHERE Request_ID = %s
-        """
-        cursor.execute(sql_insert_request, (int(old_id),))
-        
-        # Получаем ID только что созданной заявки (специфика MySQL)
-        new_id = cursor.lastrowid
-
-        # 2. Копируем всю переписку (чат) из request_message
-        sql_copy_messages = """
-            INSERT INTO request_message (
-                Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path
-            )
-            SELECT 
-                %s, Sender_Type, Author, Message_Text, Created_At, Attachment_Path
-            FROM request_message 
-            WHERE Request_ID = %s
-        """
-        cursor.execute(sql_copy_messages, (new_id, int(old_id)))
-
-        # 3. Важно: Мы НЕ копируем данные из departure_record (ГСМ), 
-        # так как по условию служебная информация должна быть пустой.
-        # Новая запись в departure_record создастся автоматически вашей функцией update_fuel_record,
-        # когда пользователь впервые нажмет "Сохранить" в новой заявке.
-
-        conn.commit()
-        return new_id
-
-    except Exception as e:
-        print(f"Ошибка при дублировании заявки: {e}")
-        conn.rollback()
-        return None
-    finally:
+        # Закрываем и курсор, и соединение
         cursor.close()
         conn.close()
-
+        
 def get_user_tg_id(user_name):
     """Ищет telegram_id по полному имени пользователя в executor"""
     try:
@@ -492,3 +449,80 @@ def db_create_new_request(subject, body, user_id, section_id):
         finally:
             conn.close()
     return None
+
+# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+
+def log_action(login, action, details):
+    """Записывает действие пользователя в лог."""
+    try:
+        conn = get_db_connection()
+        if not conn: return
+        
+        cursor = conn.cursor()
+        sql = "INSERT INTO action_log (user_login, action_type, details) VALUES (%s, %s, %s)"
+        cursor.execute(sql, (login, action, details))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        # В реальном приложении здесь лучше писать в отдельный файл логов,
+        # чтобы не зациклиться, если сама база упала.
+        print(f"!!! ОШИБКА ЛОГИРОВАНИЯ: {e}")
+
+def duplicate_request(old_id):
+    """
+    Создает полную копию заявки с новой датой и пустой служебной информацией.
+    Копирует всю переписку (сообщения).
+    """
+    conn = get_db_connection()
+    if not conn:
+        return None
+    
+    cursor = conn.cursor()
+    try:
+        # 1. Создаем новую запись в таблице request на основе старой
+        # Поля Result, Time_Spent обнуляем, Status ставим '🔴 Новая', Closed_At в NULL
+        sql_insert_request = """
+            INSERT INTO request (
+                Date_Received, Status, Service_Type, Description, 
+                Result, Time_Spent, Closed_At, User_ID, 
+                Court_Section_ID, Request_Type_ID, Assigned_Executor_ID
+            )
+            SELECT 
+                NOW(), '🔴 Новая', Service_Type, Description, 
+                '', 0, NULL, User_ID, 
+                Court_Section_ID, Request_Type_ID, Assigned_Executor_ID
+            FROM request 
+            WHERE Request_ID = %s
+        """
+        cursor.execute(sql_insert_request, (int(old_id),))
+        
+        # Получаем ID только что созданной заявки (специфика MySQL)
+        new_id = cursor.lastrowid
+
+        # 2. Копируем всю переписку (чат) из request_message
+        sql_copy_messages = """
+            INSERT INTO request_message (
+                Request_ID, Sender_Type, Author, Message_Text, Created_At, Attachment_Path
+            )
+            SELECT 
+                %s, Sender_Type, Author, Message_Text, Created_At, Attachment_Path
+            FROM request_message 
+            WHERE Request_ID = %s
+        """
+        cursor.execute(sql_copy_messages, (new_id, int(old_id)))
+
+        # 3. Важно: Мы НЕ копируем данные из departure_record (ГСМ), 
+        # так как по условию служебная информация должна быть пустой.
+        # Новая запись в departure_record создастся автоматически вашей функцией update_fuel_record,
+        # когда пользователь впервые нажмет "Сохранить" в новой заявке.
+
+        conn.commit()
+        return new_id
+
+    except Exception as e:
+        print(f"Ошибка при дублировании заявки: {e}")
+        conn.rollback()
+        return None
+    finally:
+        cursor.close()
+        conn.close()
