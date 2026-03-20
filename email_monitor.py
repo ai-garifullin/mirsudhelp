@@ -1,7 +1,11 @@
 import imaplib
 import email
 from email.header import decode_header
-from db_utils import get_db_connection
+from db_utils import (
+    get_db_connection, get_section_id_by_email, get_or_create_user,
+    check_request_exists, get_active_user_requests, 
+    db_add_request_message, db_create_new_request
+)
 import time
 import re
 import smtplib
@@ -172,13 +176,6 @@ def process_emails():
         mail.logout()
         return
 
-    conn = get_db_connection()
-    if not conn:
-        logger.error("❌ Нет связи с БД")
-        mail.logout()
-        return
-    cursor = conn.cursor()
-
     for e_id in email_ids:
         try:
             _, msg_data = mail.fetch(e_id, "(RFC822)")
@@ -191,132 +188,60 @@ def process_emails():
 
             logger.info(f"📨 От: {sender_email} | Тема: {raw_subject}")
 
-            # 1. ПРОВЕРКА ОТПРАВИТЕЛЯ
-            cursor.execute("SELECT Section_ID FROM court_section WHERE Email = %s", (sender_email,))
-            section_res = cursor.fetchone()
-
-            if not section_res:
+            # 1. ПРОВЕРКА ОТПРАВИТЕЛЯ (Через БД-утилиту)
+            section_id = get_section_id_by_email(sender_email)
+            if not section_id:
                 logger.warning(f"⛔ Отказ: {sender_email} не найден.")
                 send_email(sender_email, "Ошибка доступа", "Ваш email не зарегистрирован в системе.")
                 continue
 
-            section_id = section_res[0]
-
-            # 2. ПОИСК ПОЛЬЗОВАТЕЛЯ
-            cursor.execute("SELECT User_ID FROM user WHERE Full_Name = %s", (raw_from,))
-            user_res = cursor.fetchone()
-            user_id = user_res[0] if user_res else None
-            
-            if not user_id:
-                cursor.execute("INSERT INTO user (Full_Name) VALUES (%s)", (raw_from,))
-                user_id = cursor.lastrowid
+            # 2. ПОИСК ИЛИ СОЗДАНИЕ ПОЛЬЗОВАТЕЛЯ
+            user_id = get_or_create_user(raw_from)
 
             # --- ГЛАВНАЯ ЛОГИКА МАРШРУТИЗАЦИИ ---
-            
-            # А) ПОИСК ПО ID (Самый приоритетный)
-            # Ищем "Заявк" + любое окончание (а-я) + пробелы + № + цифры
-            # Пример: "по заявке №10", "Заявка № 10", "ЗАЯВКИ №10"
-            match_id = re.search(r'заявк[а-я]*\s+№\s*(\d+)', raw_subject, re.IGNORECASE)
-            
             target_request_id = None
 
+            # А) ПОИСК ПО ID В ТЕМЕ
+            match_id = re.search(r'заявк[а-я]*\s+№\s*(\d+)', raw_subject, re.IGNORECASE)
             if match_id:
                 potential_id = int(match_id.group(1))
-                # Проверяем, существует ли такая заявка реально
-                cursor.execute("SELECT Request_ID FROM request WHERE Request_ID = %s", (potential_id,))
-                if cursor.fetchone():
+                if check_request_exists(potential_id):
                     target_request_id = potential_id
-                    #logger.info(f"   -> 📎 Найден ID {target_request_id} (из темы письма).")
                 else:
-                    logger.warning(f"   -> ⚠️ В теме есть ID {potential_id}, но в базе его нет.")
+                    logger.warning(f"   -> ⚠️ В теме есть ID {potential_id}, но в базе его нет.")
 
-            # Б) ЕСЛИ ID НЕ НАЙДЕН -> Ищем по совпадению текста темы (Threading)
+            # Б) ПОИСК ПО СОВПАДЕНИЮ ТЕМЫ (Threading)
             if not target_request_id:
                 clean_subj = normalize_subject(raw_subject)
-                
-                # Ищем открытые заявки этого пользователя
-                sql_search = """
-                    SELECT Request_ID, Description FROM request 
-                    WHERE User_ID = %s 
-                    AND Status NOT LIKE '🟢%' 
-                    AND Status NOT LIKE '%Закрыт%'
-                """
-                cursor.execute(sql_search, (user_id,))
-                active_requests = cursor.fetchall()
+                active_requests = get_active_user_requests(user_id)
                 
                 for req_id, desc in active_requests:
-                    # Берем первую строку описания (там всегда "Тема: ...")
                     first_line = desc.split('\n')[0] 
                     stored_subj = normalize_subject(first_line.replace('Тема:', ''))
                     
-                    # Если очищенные темы совпадают
                     if stored_subj and stored_subj == clean_subj:
                         target_request_id = req_id
-                        #logger.info(f"   -> 📎 Найдена ветка по теме: '{clean_subj}' -> ID {target_request_id}")
                         break
 
             # --- ВЫПОЛНЕНИЕ ДЕЙСТВИЯ ---
             if target_request_id:
-                update_existing_ticket(cursor, conn, target_request_id, body)
+                # Обновляем существующую
+                db_add_request_message(target_request_id, body)
+                logger.info(f" ✅ Добавлено сообщение в заявку №{target_request_id}")
             else:
-                create_new_ticket(cursor, conn, raw_subject, body, user_id, section_id, sender_email)
+                # Создаем новую
+                new_id = db_create_new_request(raw_subject, body, user_id, section_id)
+                if new_id:
+                    logger.info(f" ✅ Создана новая заявка №{new_id}")
+                    # Отправляем автоответ
+                    reply_subj = f"Заявка №{new_id} принята"
+                    reply_body = f"Ваше обращение зарегистрировано под номером {new_id}.\nТема: {raw_subject}"
+                    send_email(sender_email, reply_subj, reply_body)
 
         except Exception as e:
             logger.error(f"❌ Сбой обработки письма: {e}", exc_info=True)
 
-    conn.close()
     mail.logout()
-
-def update_existing_ticket(cursor, conn, request_id, body):
-    """
-    Добавляет сообщение в НОВУЮ таблицу request_message.
-    Саму таблицу Request мы не трогаем (там лежит только первое письмо).
-    """
-    # Проверяем существование заявки
-    cursor.execute("SELECT Request_ID FROM request WHERE Request_ID = %s", (request_id,))
-    if not cursor.fetchone():
-        logger.warning(f"   -> ⚠️ Заявка №{request_id} не найдена в базе.")
-        return
-
-    # Вставляем сообщение. Sender_Type = 'Client', т.к. пришло письмо
-    sql = """
-        INSERT INTO request_message (Request_ID, Sender_Type, Message_Text, Created_At) 
-        VALUES (%s, 'Client', %s, NOW())
-    """
-    cursor.execute(sql, (request_id, body))
-    conn.commit()
-    
-    # Можно обновить статус заявки, чтобы поднять её вверх в списке
-    # cursor.execute("UPDATE request SET Status = '🔴 Открыта' WHERE Request_ID = %s", (request_id,))
-    # conn.commit()
-    
-    #logger.info(f"   -> ✅ Сообщение добавлено в чат заявки №{request_id}.")
-
-def create_new_ticket(cursor, conn, subject, body, user_id, section_id, sender_email):
-    """
-    Создает заявку в таблице Request.
-    В поле Description записываем суть первого письма.
-    """
-    #logger.info("   -> 🆕 Новая заявка.")
-    
-    full_desc = f"Тема: {subject}\n\n{body}"
-    
-    # Создаем саму заявку
-    sql = """
-        INSERT INTO request 
-        (Description, User_ID, Court_Section_ID, Status, Request_Type_ID, Date_Received) 
-        VALUES (%s, %s, %s, '🔴 Новая', NULL, NOW())
-    """
-    cursor.execute(sql, (full_desc, user_id, section_id))
-    new_id = cursor.lastrowid
-    conn.commit()
-    
-    #logger.info(f"   -> ✅ Заявка №{new_id} создана.")
-    
-    # Отправляем автоответ
-    reply_subj = f"Заявка №{new_id} принята"
-    reply_body = f"Ваше обращение зарегистрировано под номером {new_id}.\nТема: {subject}"
-    send_email(sender_email, reply_subj, reply_body)
 
 if __name__ == "__main__":
     #logger.info("🚀 Monitor v3 (Regex Fixed) запущен")

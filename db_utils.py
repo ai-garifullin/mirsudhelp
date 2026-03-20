@@ -374,3 +374,103 @@ def get_director_tg_id():
     finally:
         if conn:
             conn.close()
+
+# --- НОВЫЕ ФУНКЦИИ ДЛЯ EMAIL MONITOR ---
+
+def get_section_id_by_email(email):
+    """Ищет ID судебного участка по email."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT Section_ID FROM court_section WHERE Email = %s", (email,))
+            res = cursor.fetchone()
+            return res[0] if res else None
+        finally:
+            conn.close()
+    return None
+
+def get_or_create_user(full_name):
+    """Возвращает User_ID, создавая пользователя, если его нет."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT User_ID FROM user WHERE Full_Name = %s", (full_name,))
+            res = cursor.fetchone()
+            if res:
+                return res[0]
+            
+            cursor.execute("INSERT INTO user (Full_Name) VALUES (%s)", (full_name,))
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+    return None
+
+def check_request_exists(request_id):
+    """Проверяет, существует ли заявка с таким ID."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT Request_ID FROM request WHERE Request_ID = %s", (request_id,))
+            return cursor.fetchone() is not None
+        finally:
+            conn.close()
+    return False
+
+def get_active_user_requests(user_id):
+    """Получает список открытых заявок пользователя для поиска по теме."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            sql = """
+                SELECT Request_ID, Description FROM request 
+                WHERE User_ID = %s 
+                AND Status NOT LIKE '🟢%' 
+                AND Status NOT LIKE '%Закрыт%'
+            """
+            cursor.execute(sql, (user_id,))
+            return cursor.fetchall()
+        finally:
+            conn.close()
+    return []
+
+def db_add_request_message(request_id, message_text):
+    """Добавляет новое сообщение в существующую заявку."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            sql = """
+                INSERT INTO request_message (Request_ID, Sender_Type, Message_Text, Created_At) 
+                VALUES (%s, 'Client', %s, NOW())
+            """
+            cursor.execute(sql, (request_id, message_text))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+    return False
+
+def db_create_new_request(subject, body, user_id, section_id):
+    """Создает новую заявку и возвращает её ID."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            full_desc = f"Тема: {subject}\n\n{body}"
+            sql = """
+                INSERT INTO request 
+                (Description, User_ID, Court_Section_ID, Status, Request_Type_ID, Date_Received) 
+                VALUES (%s, %s, %s, '🔴 Новая', NULL, NOW())
+            """
+            cursor.execute(sql, (full_desc, user_id, section_id))
+            new_id = cursor.lastrowid
+            conn.commit()
+            return new_id
+        finally:
+            conn.close()
+    return None
