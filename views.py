@@ -48,7 +48,23 @@ cloud_link = os.getenv('CLOUD_LINK')
 all_cloud_resources = get_yandex_disk_resources(cloud_link)
 
 def render_detail_view(request_id):
-    """Рисует страницу-карточку с чатом слева и данными справа."""
+    
+    st.markdown("""
+        <style>
+            #root > div:nth-child(1) > div > div > div > div > section > div {
+                padding-top: 0rem !important;
+                padding-bottom: 0rem !important;
+            }
+            .stAppHeader {
+                display: none !important;
+            }
+            h1 {
+                margin-top: -50px !important;
+                padding-top: 0 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+    
     conn = get_db_connection()
 
     # --- 1. ЗАГРУЗКА ДАННЫХ И КНОПКА "НАЗАД" ---
@@ -71,40 +87,18 @@ def render_detail_view(request_id):
         ##Отправка уведомления пользователю в Telegram о том, что заявка выполнена (если он привязан)
         conn_tmp = get_db_connection()
         cur_tmp = conn_tmp.cursor(dictionary=True)
-        # cur_tmp.execute("""
-        #     SELECT u.Chat_ID, u.Email 
-        #     FROM user u
-        #     JOIN request r ON r.User_ID = u.User_ID
-        #     WHERE r.Request_ID = %s
-        # """, (request_id,))
-        #user_info = cur_tmp.fetchone()
+        
         conn_tmp.close()
         
         message_body = f"✅ Ваша заявка №{request_id} выполнена и закрыта. Спасибо за обращение!"
 
-        # 2. Попытка отправки в Telegram
-        # if user_info and user_info.get('Chat_ID'):
-        #     try:
-        #         bot.send_message(user_info['Chat_ID'], message_body)
-        #         add_request_message(conn, request_id, 'Internal', "Система: Уведомление о закрытии отправлено в ТГ", "System")
-        #     except Exception as e:
-        #         print(f"Ошибка ТГ: {e}")
-        
-        # 3. Попытка отправки на Email (если он есть)
-        # elif user_info and user_info.get('Email'):
-        #     try:
-        #         # Используем вашу функцию send_email
-        #         from email_monitor import send_email
-        #         send_email(user_info['Email'], f"Заявка №{request_id} закрыта", message_body)
-        #         add_request_message(conn, request_id, 'Internal', f"Система: Уведомление отправлено на Email ({user_info['Email']})", "System")
-        #     except Exception as e:
-        #         print(f"Ошибка Email: {e}")
-        
-        # else:
-        #     add_request_message(conn, request_id, 'Internal', "Система: Уведомление не отправлено (нет контактов)", "System")
-
     else:
         is_disabled = False # Разрешаем редактирование
+
+    current_service_type = st.session_state.get('st_service', data.get('Service_Type'))
+
+    
+    fuel_disabled = is_disabled or (current_service_type == "Удаленно")
 
         # Блокировка полей неадминам
     is_admin = st.session_state["user_role"] == 'admin'
@@ -149,61 +143,71 @@ def render_detail_view(request_id):
         # --- CSS СТИЛИ ДЛЯ ЧАТА ---
         st.markdown("""
             <style>
+                /* Общий контейнер для всех сообщений */
                 .chat-container {
                     display: flex;
                     flex-direction: column;
-                    gap: 30px;
-                    padding: 10px;
+                    width: 100%;
+                    gap: 10px;
                 }
+
+                /* Базовый стиль сообщения */
                 .message-box {
                     padding: 15px;
                     border-radius: 12px;
-                    max-width: 90%;
+                    max-width: 80%;
+                    width: fit-content; /* Чтобы блок не растягивался на весь экран */
                     word-wrap: break-word;
                     font-size: 15px;
-                    line-height: 1.5;
+                    margin-bottom: 10px;
                     box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-                    margin-bottom: 20px; /* Отступ СНИЗУ от каждого сообщения */
                 }
-                /* Стиль для заявителя (Слева, серый) */
+
+                /* Исходная заявка (по центру) */
+                .initial-msg {
+                    align-self: center;
+                    background-color: #fff3cd;
+                    color: #856404;
+                    width: 95%; /* Она может быть широкой */
+                    border: 1px solid #ffeeba;
+                }
+
+                /* Заявитель (Слева) */
                 .client-msg {
+                    align-self: flex-start;
                     background-color: #f2f3f5;
                     color: #1f1f1f;
-                    align-self: flex-start;
                     border-bottom-left-radius: 2px;
                     border: 1px solid #e0e0e0;
                 }
-                /* Стиль для техподдержки (Справа, зеленый/синий) */
+
+                /* Исполнитель (Справа) */
                 .support-msg {
-                    background-color: #e3f2fd; /* Светло-синий */
-                    color: #0d47a1;
                     align-self: flex-end;
+                    background-color: #e3f2fd;
+                    color: #0d47a1;
                     border-bottom-right-radius: 2px;
                     border: 1px solid #bbdefb;
+                    margin-left: auto; /* Дополнительная страховка для прижатия вправо */
                 }
-                /* Стиль для самой первой заявки (Выделяем особо) */
-                .initial-msg {
-                    background-color: #fff3cd; /* Желтоватый фон */
-                    color: #856404;
-                    align-self: center;
-                    width: 100%;
-                    border: 1px solid #ffeeba;
-                }
-                /* Стиль для внутренних заметок (сотрудники видят, заявитель — нет) */
+
+                /* Внутренняя заметка (Справа) */
                 .internal-msg {
-                    background-color: #b6d7a8; /* Светло-зеленый, как стикер */
-                    color: #1f1f1f;
-                    align-self: flex-start;
-                    border-bottom-left-radius: 2px;
-                    border: 1px solid #6aa84f;
+                    align-self: flex-end;
+                    background-color: #d4edda;
+                    color: #155724;
+                    border-bottom-right-radius: 2px;
+                    border: 1px solid #c3e6cb;
+                    margin-left: auto;
                 }
+
                 .meta-info {
-                    font-size: 12px;
-                    color: #6c757d;
-                    margin-bottom: 5px;
-                    font-weight: bold;
                     display: flex;
                     justify-content: space-between;
+                    font-size: 12px;
+                    font-weight: bold;
+                    margin-bottom: 8px;
+                    gap: 20px;
                 }
             </style>
         """, unsafe_allow_html=True)
@@ -477,10 +481,10 @@ def render_detail_view(request_id):
         col_i1, col_i2 = st.columns(2)
         with col_i1:
             st.number_input("Общее время:", value=int(data.get('Time_Spent', 0) or 0), disabled=True)
-            fuel_cons = st.number_input("Расход (л/100км):", value=float(data.get('Fuel_Consumption', 0.0) or 0.0), step=0.1, disabled=is_disabled)
+            fuel_cons = st.number_input("Расход (л/100км):", value=float(data.get('Fuel_Consumption', 0.0) or 0.0), step=0.1, disabled=fuel_disabled)
         with col_i2:
             st.number_input("Общий пробег:", value=float(data.get('Mileage', 0.0) or 0.0), disabled=True)
-            fuel_price = st.number_input("Цена бензина (руб):", value=float(data.get('Fuel_Price', 0.0) or 0.0), step=0.1, disabled=is_disabled)
+            fuel_price = st.number_input("Цена бензина (руб):", value=float(data.get('Fuel_Price', 0.0) or 0.0), step=0.1, disabled=fuel_disabled)
 
         st.write("---")
 
@@ -541,6 +545,19 @@ def render_detail_view(request_id):
                 if float(fuel_price) != old_price:
                     update_fuel_record(request_id, "Fuel_Price", fuel_price)
                     log_action(current_user, "UPDATE", f"Заявка #{request_id}: Цена бензина изменена на '{fuel_price}'")
+                
+                if new_status == '✅ Выполнена':
+                    st.success("✅ Заявка закрыта. Возврат к списку...")
+                    time.sleep(1) # Короткая пауза для уведомления
+                    
+                    # Сбрасываем состояние, чтобы вернуться на главную
+                    st.session_state.selected_request_id = None
+                    
+                    # Чистим адресную строку браузера
+                    if "id" in st.query_params:
+                        del st.query_params["id"]
+                    
+                    st.rerun() # Перезапускаем интерфейс
 
                 # 2. ЛОГИКА ДОБАВЛЕНИЯ РЕЗУЛЬТАТОВ (Авто-счетчик)
                 if st.session_state.new_res.strip() or st.session_state.new_time > 0 or st.session_state.new_mile > 0:
@@ -582,7 +599,7 @@ def render_detail_view(request_id):
                     st.rerun()
 
         with col_n2:
-            st.session_state.new_mile = st.number_input("Пробег (км):", value=st.session_state.new_mile, step=1.0)
+            st.session_state.new_mile = st.number_input("Пробег (км):", value=st.session_state.new_mile, step=1.0, disabled = fuel_disabled)
             if st.button("👥 Создать дубликат", use_container_width=True):
                 new_request_id = duplicate_request(request_id)
                 if new_request_id:

@@ -45,17 +45,6 @@ except json.JSONDecodeError:
 
 # --- 2. ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
 def check_login():
-    import streamlit.components.v1 as components
-    # Выводим куки, которые видит браузер, прямо в боковую панель
-    components.html(
-        """
-        <script>
-            var c = document.cookie;
-            document.write("<div style='color:red; font-size:12px;'>Браузер видит: " + c + "</div>");
-        </script>
-        """, height=50
-    )
-    """Управляет входом: Magic Link -> Cookies -> Session -> Form"""
     
     # А. Обработка Magic Link (Приоритет)
     # Используем st.query_params как словарь
@@ -147,8 +136,6 @@ def check_login():
                 else:
                     st.error("Неверный логин или пароль")
     return False
-# Это покажет, что реально вернул браузер
-st.sidebar.error(f"БРАУЗЕР ВИДИТ КУКИ: {st.session_state.get('browser_cookies', 'Жду данные...')}")
 
 # --- 3. ГЛАВНЫЙ ЦИКЛ ПРИЛОЖЕНИЯ ---
 if check_login():
