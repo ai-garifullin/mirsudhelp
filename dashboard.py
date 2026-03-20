@@ -24,8 +24,7 @@ except json.JSONDecodeError:
 
 # --- 2. УПРАВЛЕНИЕ КУКИ ЧЕРЕЗ JS (Только запись и удаление) ---
 def set_auth_cookie(login_val):
-    # Пишем обычную, не зашифрованную куку. Safari ее не блокирует, 
-    # а Chrome локально принимает без проблем.
+    
     js_code = f"""
         <script>
             var d = new Date();
@@ -57,7 +56,6 @@ def check_login():
             return False
 
     # Б. НАТИВНОЕ ЧТЕНИЕ КУКИ (Streamlit 1.38+)
-    # Сервер сам видит куку ДО отрисовки страницы. Никаких JS-мостов!
     if hasattr(st, "context") and hasattr(st.context, "cookies"):
         saved_login = st.context.cookies.get("mirsud_user")
         if saved_login:

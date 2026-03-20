@@ -463,9 +463,16 @@ def render_detail_view(request_id):
         # 3. Поля ввода (БЕЗ ФОРМЫ - никакой надписи не будет!)
         st.markdown("### Добавить информацию")
         st.session_state.new_res = st.text_area("Результат:", value=st.session_state.new_res)
+        col_r1, col_r2 = st.columns([5,5])
+        with col_r1:
+            st.session_state.new_time = st.number_input("Затрачено минут:", value=st.session_state.new_time, step=5)
+        with col_r2:
+            st.session_state.new_mile = st.number_input("Пробег (км):", value=st.session_state.new_mile, step=1.0, disabled = fuel_disabled)
+
+        # Сохранение и дубликат    
         col_n1, col_n2 = st.columns([5,5])
         with col_n1:
-            st.session_state.new_time = st.number_input("Затрачено минут:", value=st.session_state.new_time, step=5)
+            
              # 4. Кнопка сохранения
             if st.button("💾 Сохранить", type="primary", use_container_width=True):
                 # Берем значения из session_state, так как они теперь привязаны к ключам
@@ -520,7 +527,7 @@ def render_detail_view(request_id):
                 
                 if new_status == '✅ Выполнена':
                     st.success("✅ Заявка закрыта. Возврат к списку...")
-                    time.sleep(1) # Короткая пауза для уведомления
+                    time.sleep(3) # Короткая пауза для уведомления
                     
                     # Сбрасываем состояние, чтобы вернуться на главную
                     st.session_state.selected_request_id = None
@@ -571,7 +578,6 @@ def render_detail_view(request_id):
                     st.rerun()
 
         with col_n2:
-            st.session_state.new_mile = st.number_input("Пробег (км):", value=st.session_state.new_mile, step=1.0, disabled = fuel_disabled)
             if st.button("👥 Создать дубликат", use_container_width=True):
                 new_request_id = duplicate_request(request_id)
                 if new_request_id:
