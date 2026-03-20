@@ -11,16 +11,23 @@ from views import render_detail_view
 
 # --- 1. ЗАГРУЗКА НАСТРОЕК ---
 load_dotenv()
+
+if "logout_submitted" not in st.session_state:
+    st.session_state["logout_submitted"] = False
+
 st.set_page_config(page_title="Service Desk Mirsud", layout="wide")
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
-magic_keys_raw = os.getenv('MAGIC_KEYS_JSON', '{}')
-try:
-    MAGIC_KEYS = json.loads(magic_keys_raw)
-except json.JSONDecodeError:
-    MAGIC_KEYS = {}
+# Старый костыль для ios
+# """ 
+#     magic_keys_raw = os.getenv('MAGIC_KEYS_JSON', '{}')
+# try:
+#     MAGIC_KEYS = json.loads(magic_keys_raw)
+# except json.JSONDecodeError:
+#     MAGIC_KEYS = {}
+# """
 
 # --- 2. УПРАВЛЕНИЕ КУКИ ЧЕРЕЗ JS (Только запись и удаление) ---
 def set_auth_cookie(login_val):
@@ -44,18 +51,15 @@ def clear_auth_cookie():
 
 # --- 3. ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
 def check_login():
-    # А. Проверка активной сессии в памяти Python
-    if st.session_state.get("logged_in"):
-        role = get_user_role(st.session_state["user_login"])
-        if role:
-            st.session_state["user_role"] = role
-            return True
-        else:
-            st.session_state["logged_in"] = False
-            st.error("Доступ запрещен или аккаунт удален.")
-            return False
+    # 1. Если пользователь только что нажал "Выйти", игнорируем куки
+    if st.session_state.get("logout_submitted"):
+        return False
 
-    # Б. НАТИВНОЕ ЧТЕНИЕ КУКИ (Streamlit 1.38+)
+    # 2. Проверка активной сессии (память)
+    if st.session_state.get("logged_in"):
+        return True
+
+    # 3. Нативное чтение куки (только если не было команды на выход)
     if hasattr(st, "context") and hasattr(st.context, "cookies"):
         saved_login = st.context.cookies.get("mirsud_user")
         if saved_login:
@@ -64,25 +68,26 @@ def check_login():
                 st.session_state["logged_in"] = True
                 st.session_state["user_login"] = user_db['login']
                 st.session_state["user_role"] = user_db['role']
-                return True # Сразу пускаем внутрь, форма входа даже не мелькнет
-
-    # В. Обработка Magic Link
-    auth_token = st.query_params.get("auth")
-    if auth_token in MAGIC_KEYS:
-        target_login = MAGIC_KEYS[auth_token]
-        user_db = get_user_by_login(target_login)
+                return True
             
-        if user_db:
-            st.session_state["logged_in"] = True
-            st.session_state["user_login"] = user_db['login']
-            st.session_state["user_role"] = user_db['role']
+    # Старый костыль для ios
+    # """В. Обработка Magic Link
+    # auth_token = st.query_params.get("auth")
+    # if auth_token in MAGIC_KEYS:
+    #     target_login = MAGIC_KEYS[auth_token]
+    #     user_db = get_user_by_login(target_login)
             
-            set_auth_cookie(user_db['login'])
-            log_action(user_db['login'], 'LOGIN_MAGIC', 'Вход по Magic Link')
+    #     if user_db:
+    #         st.session_state["logged_in"] = True
+    #         st.session_state["user_login"] = user_db['login']
+    #         st.session_state["user_role"] = user_db['role']
             
-            del st.query_params["auth"]
-            time.sleep(0.5) # Даем браузеру долю секунды на сохранение куки
-            st.rerun()
+    #         set_auth_cookie(user_db['login'])
+    #         log_action(user_db['login'], 'LOGIN_MAGIC', 'Вход по Magic Link')
+            
+    #         del st.query_params["auth"]
+    #         time.sleep(0.5) # Даем браузеру долю секунды на сохранение куки
+    #         st.rerun()"""
 
     # Г. Форма входа
     with st.form("login_form"):
@@ -115,10 +120,19 @@ if check_login():
         st.info(f"Роль: **{st.session_state.get('user_role')}**")
         
         if st.button("Выйти из системы"):
-            st.session_state.clear()
-            st.query_params.clear()
+            # Сначала ставим флаг блокировки авто-входа
+            st.session_state["logout_submitted"] = True
+            st.session_state["logged_in"] = False
+            
+            # Стираем данные из памяти
+            user_to_log = st.session_state.get('user_login', 'unknown')
+            log_action(user_to_log, 'LOGOUT', 'Выход из системы')
+            
+            # Вызываем JS для удаления куки
             clear_auth_cookie()
-            time.sleep(0.5)
+            
+            # Даем небольшую паузу и перезагружаем
+            time.sleep(0.4) 
             st.rerun()
 
     # --- РОУТЕР ---
