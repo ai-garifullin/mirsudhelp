@@ -45,49 +45,38 @@ except json.JSONDecodeError:
 
 # --- 2. ФУНКЦИЯ ПРОВЕРКИ ЛОГИНА ---
 def check_login():
-    
-    # А. Обработка Magic Link (Приоритет)
-    # Используем st.query_params как словарь
+    # А. Обработка Magic Link
     current_params = st.query_params
     auth_token = current_params.get("auth")
 
     if auth_token in MAGIC_KEYS and not st.session_state.get("logged_in"):
         target_login = MAGIC_KEYS[auth_token]
         
-        conn = get_db_connection()
-        if conn:
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT login, role FROM system_users WHERE login = %s", (target_login,))
-            user_db = cursor.fetchone()
-            conn.close()
+        # ИСПОЛЬЗУЕМ ФУНКЦИЮ ИЗ DB_UTILS
+        user_db = get_user_by_login(target_login)
             
-            if user_db:
-                st.session_state["logged_in"] = True
-                st.session_state["user_login"] = user_db['login']
-                st.session_state["user_role"] = user_db['role']
-                
-                # Сохраняем куку для Windows/Android
-                cookies['auth_token'] = json.dumps({'login': user_db['login']})
-                cookies.save()
-                
-                log_action(user_db['login'], 'LOGIN_MAGIC', 'Вход по Magic Link')
-                
-                # ВАЖНО: Удаляем только auth, сохраняя id заявки, если он был в URL
-                del st.query_params["auth"]
-                st.rerun()
+        if user_db:
+            st.session_state["logged_in"] = True
+            st.session_state["user_login"] = user_db['login']
+            st.session_state["user_role"] = user_db['role']
+            
+            cookies['auth_token'] = json.dumps({'login': user_db['login']})
+            cookies.save()
+            
+            log_action(user_db['login'], 'LOGIN_MAGIC', 'Вход по Magic Link')
+            
+            del st.query_params["auth"]
+            st.rerun()
 
+    # Б. Проверка Кук (логика без изменений)
     auth_token_json = cookies.get("auth_token")
     if auth_token_json and not st.session_state.get("logged_in"):
-        # ДОБАВЬТЕ ЭТОТ ЛОГ:
-        st.sidebar.info(f"DEBUG: Raw cookie value: {auth_token_json}")
-        
         try:
             user_data = json.loads(auth_token_json)
             st.session_state["logged_in"] = True
             st.session_state["user_login"] = user_data['login']
-            st.rerun() # Добавьте принудительный rerun после успешного восстановления
+            st.rerun() 
         except Exception as e:
-            st.sidebar.error(f"Cookie decode error: {e}")
             if 'auth_token' in cookies:
                 del cookies['auth_token']
                 cookies.save()
@@ -95,46 +84,40 @@ def check_login():
     # В. Проверка активной сессии
     if st.session_state.get("logged_in"):
         login = st.session_state.get("user_login")
-        conn = get_db_connection()
-        if conn:
-            cursor = conn.cursor(dictionary=True)
-            cursor.execute("SELECT role FROM system_users WHERE login = %s", (login,))
-            user_in_db = cursor.fetchone()
-            conn.close()
-            
-            if user_in_db:
-                st.session_state["user_role"] = user_in_db['role']
-                return True
-            else:
-                st.session_state["logged_in"] = False
-                st.error("Доступ запрещен или аккаунт удален.")
+        
+        # ИСПОЛЬЗУЕМ ФУНКЦИЮ ИЗ DB_UTILS
+        role = get_user_role(login)
+        
+        if role:
+            st.session_state["user_role"] = role
+            return True
+        else:
+            st.session_state["logged_in"] = False
+            st.error("Доступ запрещен или аккаунт удален.")
     
-    # Г. Форма входа (если нет кук и нет Magic Link)
+    # Г. Форма входа
     with st.form("login_form"):
         st.header("Вход в Service Desk")
         login_input = st.text_input("Логин")
         password_input = st.text_input("Пароль", type="password")
+        
         if st.form_submit_button("Войти"):
-            conn = get_db_connection()
-            if conn:
-                cursor = conn.cursor(dictionary=True)
-                cursor.execute("SELECT * FROM system_users WHERE login = %s", (login_input,))
-                user_data = cursor.fetchone()
-                conn.close()
+            # ИСПОЛЬЗУЕМ ФУНКЦИЮ ИЗ DB_UTILS
+            user_data = verify_user_credentials(login_input, password_input)
+            
+            if user_data:
+                st.session_state["logged_in"] = True
+                st.session_state["user_login"] = user_data['login']
+                st.session_state["user_role"] = user_data['role']
                 
-                if user_data and hashlib.sha256(password_input.encode()).hexdigest() == user_data['password_hash']:
-                    st.session_state["logged_in"] = True
-                    st.session_state["user_login"] = user_data['login']
-                    st.session_state["user_role"] = user_data['role']
-                    
-                    cookies['auth_token'] = json.dumps({'login': user_data['login']})
-                    cookies.save()
-                    
-                    log_action(user_data['login'], 'LOGIN', 'Ручной вход')
-                    time.sleep(0.5)
-                    st.rerun()
-                else:
-                    st.error("Неверный логин или пароль")
+                cookies['auth_token'] = json.dumps({'login': user_data['login']})
+                cookies.save()
+                
+                log_action(user_data['login'], 'LOGIN', 'Ручной вход')
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("Неверный логин или пароль")
     return False
 
 # --- 3. ГЛАВНЫЙ ЦИКЛ ПРИЛОЖЕНИЯ ---

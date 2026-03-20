@@ -6,6 +6,7 @@ import os
 import dotenv
 dotenv.load_dotenv()
 import time
+import hashlib
 
 
 DB_HOST = os.getenv('DB_HOST', 'localhost')
@@ -50,6 +51,31 @@ def get_db_connection():
     st.error("НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ К БАЗЕ ДАННЫХ ПОСЛЕ НЕСКОЛЬКИХ ПОПЫТОК.")
     return None
 
+def get_user_by_login(login):
+    """Получает данные пользователя по логину."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM system_users WHERE login = %s", (login,))
+            return cursor.fetchone()
+        finally:
+            conn.close()
+    return None
+
+def verify_user_credentials(login, password):
+    """Проверяет логин и пароль, возвращает данные пользователя или None."""
+    user_data = get_user_by_login(login)
+    if user_data:
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        if password_hash == user_data['password_hash']:
+            return user_data
+    return None
+
+def get_user_role(login):
+    """Получает только роль пользователя (для проверки сессии)."""
+    user_data = get_user_by_login(login)
+    return user_data['role'] if user_data else None
 def fetch_main_data(filters):
     conn = get_db_connection()
     if not conn: return pd.DataFrame()
