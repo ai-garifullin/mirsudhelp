@@ -16,7 +16,7 @@ def render_main_view():
             }
             
             h1 {
-                margin-top: -20px !important;
+                margin-top: 35px !important;
                 padding-top: 0 !important;
             }
         </style>

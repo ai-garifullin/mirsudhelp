@@ -57,7 +57,7 @@ def render_detail_view(request_id):
                 display: none !important;
             }
             h1 {
-                margin-top: -50px !important;
+                margin-top: 5px !important;
                 padding-top: 0 !important;
             }
         </style>
