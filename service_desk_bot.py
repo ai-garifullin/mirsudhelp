@@ -269,7 +269,7 @@ def process_fio(message, text):
     conn.close()
     
     user_data[chat_id]['step'] = 'desc'
-    bot.send_message(chat_id, "Опишите проблему. Вы можете прикрепить файл.")
+    bot.send_message(chat_id, "Опишите проблему и укажите контактный телефон. Вы можете прикрепить 1 файл.")
 
 print("Бот запущен...")
 bot.infinity_polling()
