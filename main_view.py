@@ -1,7 +1,7 @@
 import streamlit as st
 import time
 from datetime import datetime
-from db_utils import * 
+from db_utils import get_lookup_options, get_all_locations, fetch_main_data
 import io
 import pandas as pd
 
@@ -30,12 +30,7 @@ def render_main_view():
     executors_map = get_lookup_options("executor", "Executor_ID", "Full_Name")
     types_map = get_lookup_options("request_type", "Type_ID", "Type_Name")
 
-    conn = get_db_connection()
-    if conn:
-        all_addresses = pd.read_sql("SELECT Address_Name FROM locations ORDER BY Address_Name", conn)['Address_Name'].tolist()
-        conn.close()
-    else:
-        all_addresses = []
+    all_addresses = get_all_locations()
 
     # --- БЛОК ФИЛЬТРОВ ---
     def update_filters():

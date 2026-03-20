@@ -20,8 +20,7 @@ import logging
 from dotenv import load_dotenv
 
 # --- 1. НАСТРОЙКИ ЛОГИРОВАНИЯ ---
-# Логи сохраняются в файл и выводятся в консоль
-# Создаем папку logs, если её нет (важно для Docker!)
+
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
 

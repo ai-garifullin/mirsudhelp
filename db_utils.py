@@ -13,6 +13,7 @@ DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_USER = os.getenv('DB_USER', 'root')         
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'vesna2321') 
 DB_NAME = os.getenv('DB_NAME', 'service_desk_db')   
+
 # ------- ФУНКЦИИ РАБОТЫ С ДАННЫМИ ---
 
 def get_db_connection():
@@ -51,6 +52,8 @@ def get_db_connection():
     st.error("НЕ УДАЛОСЬ ПОДКЛЮЧИТЬСЯ К БАЗЕ ДАННЫХ ПОСЛЕ НЕСКОЛЬКИХ ПОПЫТОК.")
     return None
 
+
+
 def get_user_by_login(login):
     """Получает данные пользователя по логину."""
     conn = get_db_connection()
@@ -76,6 +79,20 @@ def get_user_role(login):
     """Получает только роль пользователя (для проверки сессии)."""
     user_data = get_user_by_login(login)
     return user_data['role'] if user_data else None
+
+# --- ФУНКЦИИ ДЛЯ MAIN_VIEW.PY ---
+def get_all_locations():
+    """Получает список уникальных адресов из справочника."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            # Используем pandas для удобства формирования списка для Streamlit
+            df = pd.read_sql("SELECT Address_Name FROM locations ORDER BY Address_Name", conn)
+            return df['Address_Name'].tolist()
+        finally:
+            conn.close()
+    return []
+    
 def fetch_main_data(filters):
     conn = get_db_connection()
     if not conn: return pd.DataFrame()
@@ -154,6 +171,7 @@ def fetch_main_data(filters):
         df['Закрыта'] = pd.to_datetime(df['Закрыта']).dt.strftime('%d.%m %H:%M').fillna('')
     return df
 
+# --- ФУНКЦИИ ДЛЯ VIEWS.PY ---
 def fetch_single_request(request_id):
     conn = get_db_connection()
     if not conn: return None
@@ -234,7 +252,7 @@ def update_closed_date(request_id, is_closing):
     conn.commit()
     conn.close()
 
-
+# --- ФУНКЦИИ ДЛЯ SERVICE_DESK_BOT и NOT_BOT MONITOR ---
 def add_request_message(conn, request_id, sender_type, message_text, author, attachment_path=None):
     """
     Добавляет сообщение в БД.
@@ -375,7 +393,7 @@ def get_director_tg_id():
         if conn:
             conn.close()
 
-# --- НОВЫЕ ФУНКЦИИ ДЛЯ EMAIL MONITOR ---
+# --- ФУНКЦИИ ДЛЯ EMAIL MONITOR ---
 
 def get_section_id_by_email(email):
     """Ищет ID судебного участка по email."""
