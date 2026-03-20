@@ -44,19 +44,19 @@ def render_main_view():
     with col1:
         f_addr = st.multiselect("📍 Адрес:", options=all_addresses, 
                                 default=params.get_all("addr"), 
-                                key="f_addr", on_change=update_filters, placeholder="Выберите адрес")
+                                key="f_addr", on_change=update_filters, placeholder="Выбрать из списка")
     with col2:
         f_exec = st.multiselect("👤 Исполнитель:", options=list(executors_map.keys()), 
                                 default=params.get_all("exec"), 
-                                key="f_exec", on_change=update_filters, placeholder="Выберите исполнителя")
+                                key="f_exec", on_change=update_filters, placeholder="Выбрать из списка")
     with col3:
         f_service = st.multiselect("🛠 Вид работ:", options=["Удаленно", "Выезд", "Дубль"], 
                                 default=params.get_all("service"), 
-                                key="f_service", on_change=update_filters, placeholder="Выберите вид работ")
+                                key="f_service", on_change=update_filters, placeholder="Выбрать из списка")
     with col4:
         f_status = st.multiselect("Статус:", options=["🔴 Новая", "⚙️ В работе", "✅ Выполнена"], 
                                 default=params.get_all("status"), 
-                                key="f_status", on_change=update_filters, placeholder="Выберите статус")
+                                key="f_status", on_change=update_filters, placeholder="Выбрать из списка")
 
     # Уменьшенный разделитель
     st.markdown("<hr style='margin: 1em 0;'>", unsafe_allow_html=True)

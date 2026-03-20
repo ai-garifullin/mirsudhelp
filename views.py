@@ -83,7 +83,7 @@ def render_detail_view(request_id):
     is_disabled = is_finished or not is_admin
     
     current_service_type = st.session_state.get('st_service', data.get('Service_Type'))
-    fuel_disabled = is_disabled or (current_service_type == "Удаленно")
+    fuel_disabled = is_disabled or (current_service_type == "Удаленно") or (current_service_type == "Дубль")
     current_user = st.session_state.get("user_login", "Unknown")
 
     # --- 2. ДЕЛИМ ЭКРАН НА ДВЕ КОЛОНКИ ---
