@@ -293,7 +293,7 @@ def render_detail_view(request_id):
                 selected_cloud_file_reply = st.selectbox(
                     "📁 Выбрать файл из облака (Я.Диск):", 
                     options=["Не выбрано"] + list(all_cloud_resources.keys()),
-                    key="cloud_file_picker_reply"
+                    key="cloud_file_picker_reply", disabled=is_disabled
                 )
                 
                 uploaded_file = st.file_uploader("ИЛИ прикрепить файл с ПК:", 
@@ -347,21 +347,21 @@ def render_detail_view(request_id):
         with tab_telegram:
             with st.form("telegram_form", clear_on_submit=True):
                 st.write("📱 **Отправить сообщение в Telegram**")
-                tg_text = st.text_area("Текст сообщения:", height=100, key="tg_reply_text_v2")
+                tg_text = st.text_area("Текст сообщения:", height=100, key="tg_reply_text_v2", disabled=is_disabled)
                 
                 # Выпадающий список теперь содержит ВСЕ файлы (docx, rar, zip и т.д.)
                 selected_resource = st.selectbox(
                     "📁 Выбрать из облака (любой формат):", 
-                    options=["Не выбрано"] + list(all_cloud_resources.keys()),
+                    options=["Не выбрано"] + list(all_cloud_resources.keys()), disabled=is_disabled,
                     help="Здесь отображаются все документы, архивы и подпапки"
                 )
                 
                 # Убрали ограничение по type, чтобы разрешить docx/rar при ручной загрузке
                 tg_file = st.file_uploader("ИЛИ загрузить файл с ПК:", 
                                         type=None, 
-                                        key="tg_file_upload_v2")
+                                        key="tg_file_upload_v2", disabled=is_disabled)
                 
-                send_tg_btn = st.form_submit_button("🚀 Отправить")
+                send_tg_btn = st.form_submit_button("🚀 Отправить", disabled=is_disabled)
 
             if send_tg_btn:
                 file_save_path = None
