@@ -215,6 +215,7 @@ def render_detail_view(request_id):
             # 3. ЦИКЛ ОТРИСОВКИ СООБЩЕНИЙ
             messages = fetch_request_messages(request_id)
             for msg in messages:
+                # 1. Определяем стили и имя
                 if msg['Sender_Type'] == 'Client':
                     css, name = "client-msg", f"👤 {data.get('User_Name')}"
                 elif msg['Sender_Type'] == 'Internal':
@@ -222,15 +223,26 @@ def render_detail_view(request_id):
                 else:
                     css, name = "support-msg", f"🛠 {msg['Author']}"
                 
+                # 2. ГОТОВИМ ТЕКСТ ЗАРАНЕЕ (решаем проблему с \n)
+                raw_text = msg.get('Message_Text', '')
+                clean_text = raw_text.replace('\n', '<br>')
+                formatted_date = msg['Created_At'].strftime('%d.%m %H:%M')
+
+                # 3. Выводим чистую f-строку без лишней логики внутри скобок
                 st.markdown(f"""
                     <div class='message-box {css}'>
-                        <div class='meta-info'><span>{name}</span><span>{msg['Created_At'].strftime('%d.%m %H:%M')}</span></div>
-                        {msg['Message_Text'].replace('\n', '<br>')}
+                        <div class='meta-info'>
+                            <span>{name}</span>
+                            <span>{formatted_date}</span>
+                        </div>
+                        {clean_text}
                     </div>
                 """, unsafe_allow_html=True)
-                if msg['Attachment_Path']:
-                    display_attachment(msg['Attachment_Path'])
                 
+                # 4. Вложения
+                if msg.get('Attachment_Path'):
+                    display_attachment(msg['Attachment_Path'])
+
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.divider()
