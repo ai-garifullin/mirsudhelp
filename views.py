@@ -83,7 +83,7 @@ def render_detail_view(request_id):
     is_disabled = is_finished or not is_admin
     
     current_service_type = st.session_state.get('st_service', data.get('Service_Type'))
-    fuel_disabled = is_disabled or (current_service_type == "Удаленно") or (current_service_type == "Дубль")
+    fuel_disabled = is_disabled or (current_service_type == "Удаленно") or (current_service_type == "Дубль") or "г.Казань" in data.get('Address_Name', 'Не указан')
     current_user = st.session_state.get("user_login", "Unknown")
 
     # --- 2. ДЕЛИМ ЭКРАН НА ДВЕ КОЛОНКИ ---
@@ -551,10 +551,14 @@ def render_detail_view(request_id):
                     timestamp = datetime.datetime.now().strftime("%d.%m %H:%M")
                     
                     # Форматируем добавление компактно
-                    addition = (f"\n\n--- [Результат {count} | {timestamp}] ---\n"
+                    if current_service_type == "Удаленно" or "г.Казань" in data.get('Address_Name', 'Не указан'):
+                        addition = (f"\n\n--- [Результат {count} | {timestamp}] ---\n"
+                                f"📝 {st.session_state.new_res.strip()}\n"
+                                f"⏱ Время: {st.session_state.new_time} мин.")
+                    else: 
+                        addition = (f"\n\n--- [Результат {count} | {timestamp}] ---\n"
                                 f"📝 {st.session_state.new_res.strip()}\n"
                                 f"⏱ Время: {st.session_state.new_time} мин. | 🛣 Пробег: {st.session_state.new_mile} км.")
-                    
                     full_result = (old_result + addition).strip()
 
                     # Агрегация сумм
