@@ -106,4 +106,4 @@ WScript.Quit"""
             st.error(f"Ошибка: {e}")
 
 if __name__ == "__main__":
-    main()
+    croc()
