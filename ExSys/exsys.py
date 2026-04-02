@@ -3,7 +3,7 @@ import json
 
 # Загрузка базы знаний
 def load_kb():
-    with open("E:\mirsud_help_bot\ExSys\knowledge_base.json", "r", encoding="utf-8") as f:
+    with open("knowledge_base.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
 def run_expert_system():
