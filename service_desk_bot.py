@@ -164,7 +164,7 @@ def process_description(message):
         # 2. Создание заявки (request)
         final_desc = input_text if input_text else "[Вложение]"
         sql_req = """INSERT INTO request (Description, User_ID, Court_Section_ID, Request_Type_ID, Service_Type, Status) 
-                     VALUES (%s, %s, %s, 21, 'Удаленно', 'Новая')"""
+                     VALUES (%s, %s, %s, 22, 'Удаленно', 'Новая')"""
         cursor.execute(sql_req, (final_desc, user_id, user_data[chat_id]['section_id']))
         req_id = cursor.lastrowid
 
