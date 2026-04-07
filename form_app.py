@@ -5,6 +5,22 @@ from db_utils import get_lookup_options, get_db_connection, add_request_message
 from dotenv import load_dotenv
 import json
 load_dotenv()
+# --- 3. ИНТЕРФЕЙС ---
+st.markdown("""
+        <style>
+            #root > div:nth-child(1) > div > div > div > div > section > div {
+                padding-top: 0rem !important;
+                padding-bottom: 0rem !important;
+            }
+            .stAppHeader {
+                display: none !important;
+            }
+            h1 {
+                margin-top: 0px !important;
+                padding-top: 0 !important;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
 if "show_expert_system" not in st.session_state:
     st.session_state.show_expert_system = False
@@ -15,16 +31,38 @@ def load_kb():
 
 def run_expert_system():
     st.title("🛠 Вопросы - ответы")
-    if st.button("Назад к главному меню"):
-        st.session_state.show_expert_system = False
-        st.rerun()
+    
+    # Сетка для кнопок управления
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("⬅️ Назад"):
+            # Проверяем, есть ли куда возвращаться
+            if 'history' in st.session_state and st.session_state.history:
+                st.session_state.current_node = st.session_state.history.pop()
+                st.rerun()
+            else:
+                st.warning("Вы в самом начале.")
+
+    with col2:
+        if st.button("🏠 В главное меню"):
+            st.session_state.show_expert_system = False
+            # При выходе в меню стоит очистить историю
+            st.session_state.history = []
+            st.session_state.current_node = 'start'
+            st.rerun()
+
     st.info("Ответьте на вопросы, чтобы получить рекомендацию по устранению проблемы.")
 
     kb = load_kb()
     
-    # Инициализация состояния сессии для отслеживания пути
+    # Инициализация состояния сессии
     if 'current_node' not in st.session_state:
         st.session_state.current_node = 'start'
+    
+    # Инициализация истории (стека)
+    if 'history' not in st.session_state:
+        st.session_state.history = []
     
     node = kb.get(st.session_state.current_node)
 
@@ -32,8 +70,9 @@ def run_expert_system():
     if "solution" in node:
         st.success("### Рекомендация:")
         st.write(node["solution"])
-        if st.button("Начать сначала"):
+        if st.button("🔄 Начать сначала"):
             st.session_state.current_node = 'start'
+            st.session_state.history = [] # Очищаем историю при сбросе
             st.rerun()
             
     # Если это узел с вопросом (выбор)
@@ -43,15 +82,16 @@ def run_expert_system():
         # Создаем кнопки для каждого варианта ответа
         for option_text, next_node in node["options"].items():
             if st.button(option_text):
+                # ПЕРЕД переходом сохраняем текущий узел в историю
+                st.session_state.history.append(st.session_state.current_node)
                 st.session_state.current_node = next_node
                 st.rerun()
 
-    # Боковая панель с полезными ссылками
+    # Боковая панель
     with st.sidebar:
         st.header("Полезные контакты")
-        st.write("📞 Внутренний номер: 102")
-        st.write("✉️ Эл. почта: support@corp.local")
-
+        st.write("📞 Телефон тех. поддержки: + 7(843)296-02-17")
+        st.write("✉️ Эл. почта: ask@mirsudhelp.ru")
 # --- 2. ЛОКАЛЬНЫЕ ФУНКЦИИ ---
 
 def find_section_id(district_id, section_number):
@@ -103,22 +143,6 @@ if st.session_state.show_expert_system:
     # Если кнопка была нажата, запускаем только функцию
     run_expert_system()
 else:
-    # --- 3. ИНТЕРФЕЙС ---
-    st.markdown("""
-            <style>
-                #root > div:nth-child(1) > div > div > div > div > section > div {
-                    padding-top: 0rem !important;
-                    padding-bottom: 0rem !important;
-                }
-                .stAppHeader {
-                    display: none !important;
-                }
-                h1 {
-                    margin-top: 0px !important;
-                    padding-top: 0 !important;
-                }
-            </style>
-        """, unsafe_allow_html=True)
 
     st.set_page_config(page_title="Новая заявка", layout="centered")
     st.title("📝 Форма создания заявки")
