@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import time
-from ExSys.exsys import load_kb, run_expert_system
 from db_utils import get_lookup_options, get_db_connection, add_request_message
 from dotenv import load_dotenv
 import json

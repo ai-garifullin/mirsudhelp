@@ -5,4 +5,5 @@ __pycache__
 .git
 .env
 mysql_data
+ExSys
 logs
