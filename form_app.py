@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import time
-from db_utils import get_lookup_options, get_db_connection, add_request_message
+from db_utils import get_lookup_options, get_db_connection, add_request_message, verify_user_credentials
 from dotenv import load_dotenv
 import json
 load_dotenv()
@@ -18,7 +18,7 @@ st.markdown("""
             h1 {
                 margin-top: 0px !important;
                 padding-top: 0 !important;
-            }
+            }   
         </style>
     """, unsafe_allow_html=True)
 
@@ -30,7 +30,7 @@ def load_kb():
         return json.load(f)
 
 def run_expert_system():
-    st.title("🛠 Вопросы - ответы")
+    st.title("🛠 Экспертная система тех. поддержки Мировых Судей РТ")
     
     # Сетка для кнопок управления
     col1, col2 = st.columns(2)
@@ -70,6 +70,9 @@ def run_expert_system():
     if "solution" in node:
         st.success("### Рекомендация:")
         st.write(node["solution"])
+        if "image" in node:
+            st.image(node["image"], use_container_width=True)
+
         if st.button("🔄 Начать сначала"):
             st.session_state.current_node = 'start'
             st.session_state.history = [] # Очищаем историю при сбросе
@@ -138,6 +141,40 @@ def create_request(data):
     finally:
         conn.close()
 
+def load_info():
+    if os.path.exists("info.json"):
+        with open("info.json", "r", encoding="utf-8") as f:
+            return json.load(f).get("info_text", "")
+    return "Текст не найден"
+
+def save_info(new_text):
+    with open("info.json", "w", encoding="utf-8") as f:
+        json.dump({"info_text": new_text}, f, ensure_ascii=False, indent=4)
+
+CONFIG_FILE = "info.json"
+
+def load_main_info():
+    # Пытаемся прочитать из файла
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                return config.get("info_text", "Текст не задан")
+        except Exception as e:
+            return f"Ошибка чтения конфига: {e}"
+    
+    # Если файла нет, возвращаем стандартный текст (тот, что был в коде)
+    return """**Информация**
+    Заявки по технической поддержке инфраструктуры Мировых судей РТ принимаются..."""
+
+def save_main_info(new_text):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"info_text": new_text}, f, ensure_ascii=False, indent=4)
+        return True
+    except Exception as e:
+        st.error(f"Ошибка записи: {e}")
+        return False
 
 if st.session_state.show_expert_system:
     # Если кнопка была нажата, запускаем только функцию
@@ -150,19 +187,32 @@ else:
         st.session_state.show_expert_system = True
         st.rerun()
     else:
-        st.info("""
-        **Информация**
+        if st.query_params.get("admin") == "true":
+            with st.expander("🔐 Режим редактирования", expanded=not st.session_state.get("admin_logged_in")):
+                if not st.session_state.get("admin_logged_in"):
+                    login_inp = st.text_input("Логин")
+                    pass_inp = st.text_input("Пароль", type="password")
+                    
+                    if st.button("Войти в админку"):
+                        # Используем вашу функцию из db_utils
+                        user_data = verify_user_credentials(login_inp, pass_inp)
+                        if user_data:
+                            st.session_state["admin_logged_in"] = True
+                            st.rerun()
+                        else:
+                            st.error("Неверные данные")
+                else:
+                    # Интерфейс правки
+                    current_txt = load_main_info()
+                    new_txt = st.text_area("Текст на главной:", value=current_txt, height=300)
+                    if st.button("Сохранить"):
+                        if save_main_info(new_txt):
+                            st.success("Сохранено!")
+                            time.sleep(1)
+                            st.rerun()
 
-        Заявки по технической поддержке инфраструктуры Мировых судей РТ принимаются с 8:00 до 17:00 по МСК (сб и вс выходной)\n
-            - по электронной почте ask@mirsudhelp.ru
-            - с помощью формы электронной заявки
-            - с помощью telegram-бота @mirsudrt_help_bot (доступен чат с оператором в рабочие часы)
-            - по телефону + 7(843)296-02-17\n
-        Контактная информация других служб технической поддержки:\n
-            ГИСТ РТ: +7(843)264-73-33 (Если не работает интернет во всем здании)\n
-            КРОК: +7(800)200-22-74, e-mail Sd-pkmir@croc.ru (Если ПК МС запускается без ошибок, но происходят внутренние ошибки, не связанные с ЭЦП)\n
-            По вопросам ПТК ВИВ + 7(843)222-60-58 - Отдел правовой информатизации и компьютерных систем Минюст РТ\n
-        """)
+        # 2. Обычный вывод текста
+        st.info(load_main_info())
 
 
         st.write("Пожалуйста, заполните все поля для регистрации вашего обращения.")
